@@ -1,36 +1,133 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dollar Invest (달러인베스트)
+
+A comprehensive web application for managing USD/KRW currency investments.
+
+## Overview
+
+A personal finance tool designed for Korean investors to track, analyze, and manage their US dollar holdings with real-time exchange rate monitoring and brokerage integration.
+
+## Key Features
+
+### Dashboard
+- Real-time USD/KRW exchange rate display
+- Portfolio overview with profit/loss calculations
+- Interactive TradingView-style charts
+
+### Exchange Rates
+- Live rates for major currencies (USD, EUR, JPY, CNY, GBP)
+- Historical rate charts (30-day trends)
+- Rate change alerts and notifications
+
+### Portfolio Management
+- Multiple portfolio support
+- Average buy rate tracking
+- Realized/unrealized P&L calculations
+- Manual and automatic transaction logging
+
+### Smart Alerts
+- Target rate notifications
+- Daily rate update alerts
+- Percentage change alerts
+
+### Brokerage Integration
+- **Hana Securities**: Windows desktop bridge (Python) for 1Q Open API
+- **Korea Investment & Securities (KIS)**: REST API integration
+- Manual mode for offline tracking
+
+### User Management
+- Role-based access control (User, Admin, Super Admin)
+- Pro subscription features
+- Account suspension/activation
+
+## Tech Stack
+
+- **Frontend**: Next.js 16, React, TypeScript, Tailwind CSS v4
+- **Backend**: Next.js API Routes, Prisma ORM
+- **Database**: SQLite (development) / PostgreSQL (production)
+- **Auth**: NextAuth.js v5
+- **Charts**: lightweight-charts v5
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- npm or yarn
+
+### Installation
 
 ```bash
+# Clone the repository
+git clone https://github.com/your-repo/dollar-invest.git
+cd dollar-invest
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.example .env
+
+# Initialize database
+npx prisma db push
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```env
+# Database
+DATABASE_URL="file:./prisma/dev.db"
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# NextAuth
+NEXTAUTH_SECRET="your-secret-key"
+NEXTAUTH_URL="http://localhost:3000"
 
-## Learn More
+# Exchange Rate API (optional)
+KOREAEXIM_API_KEY="your-api-key"
 
-To learn more about Next.js, take a look at the following resources:
+# Korea Investment Securities API (optional)
+KIS_APP_KEY="your-app-key"
+KIS_APP_SECRET="your-app-secret"
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## PC Bridge (Hana Securities)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+For Hana Securities integration, a separate Python desktop application is required.
 
-## Deploy on Vercel
+See [dollar-invest-bridge/README.md](../dollar-invest-bridge/README.md) for setup instructions.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Project Structure
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+dollar-invest/
+├── src/
+│   ├── app/              # Next.js App Router pages
+│   │   ├── admin/        # Admin dashboard
+│   │   ├── alerts/       # Alert management
+│   │   ├── api/          # API routes
+│   │   ├── broker/       # Brokerage connection
+│   │   ├── exchange/     # Exchange rates
+│   │   ├── portfolio/    # Portfolio management
+│   │   ├── settings/     # User settings
+│   │   └── trade/        # Trading
+│   ├── components/       # React components
+│   │   ├── layout/       # Header, Footer
+│   │   ├── exchange/     # Exchange rate components
+│   │   ├── portfolio/    # Portfolio components
+│   │   └── ui/           # UI primitives
+│   ├── lib/              # Utility functions
+│   └── stores/           # Zustand stores
+├── prisma/
+│   └── schema.prisma     # Database schema
+└── public/               # Static assets
+```
+
+## License
+
+MIT License
+
+## Author
+
+Built with Next.js and Prisma

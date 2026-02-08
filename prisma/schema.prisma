@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// ==================== 사용자 ====================
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String?
+  image         String?
+  emailVerified DateTime?
+
+  // 역할: SUPER_ADMIN, ADMIN, USER
+  role          String    @default("USER")
+
+  // 구독 정보
+  isPro         Boolean   @default(false)
+  proExpiresAt  DateTime?
+
+  // 계정 상태
+  isActive      Boolean   @default(true)
+  suspendedAt   DateTime?
+  suspendReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts       Account[]
+  sessions       Session[]
+  brokerAccounts BrokerAccount[]
+  portfolios     Portfolio[]
+  transactions   Transaction[]
+  alerts         Alert[]
+  alertLogs      AlertLog[]
+}
+
+// ==================== NextAuth ====================
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? 
+  access_token      String? 
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? 
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ==================== 증권사 연동 ====================
+model BrokerAccount {
+  id     String @id @default(cuid())
+  userId String
+
+  // 증권사 종류: HANA, KIS, MANUAL
+  broker String
+
+  // 하나증권 (브릿지 통해 연결)
+  hanaAccountNo   String?
+  hanaBridgeToken String?
+
+  // 한국투자증권
+  kisAppKey      String?
+  kisAppSecret   String?
+  kisAccountNo   String?
+  kisAccessToken String? 
+  kisTokenExpiry DateTime?
+
+  // 공통
+  accountAlias String?
+  isActive     Boolean   @default(true)
+  lastSyncAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolios   Portfolio[]
+  transactions Transaction[]
+}
+
+// ==================== 포트폴리오 ====================
+model Portfolio {
+  id              String  @id @default(cuid())
+  userId          String
+  brokerAccountId String?
+
+  name        String
+  currency    String  @default("USD")
+  description String?
+  isDefault   Boolean @default(false)
+
+  currentBalance Decimal @default(0) 
+  avgBuyRate     Decimal @default(0) 
+  totalInvested  Decimal @default(0) 
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brokerAccount BrokerAccount? @relation(fields: [brokerAccountId], references: [id])
+  transactions  Transaction[]
+  splitPlans    SplitPlan[]
+}
+
+// ==================== 거래 내역 ====================
+model Transaction {
+  id              String  @id @default(cuid())
+  userId          String
+  portfolioId     String
+  brokerAccountId String?
+
+  type     String
+  currency String @default("USD")
+
+  amount    Decimal 
+  rate      Decimal 
+  krwAmount Decimal 
+  fee       Decimal @default(0) 
+
+  orderId     String?
+  orderStatus String?
+
+  memo     String?
+  tradedAt DateTime
+
+  isManual Boolean   @default(true)
+  syncedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  portfolio     Portfolio      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  brokerAccount BrokerAccount? @relation(fields: [brokerAccountId], references: [id])
+
+  @@index([userId, tradedAt])
+  @@index([portfolioId])
+}
+
+// ==================== 분할 매수/매도 계획 ====================
+model SplitPlan {
+  id          String @id @default(cuid())
+  portfolioId String
+
+  type           String
+  totalAmount    Decimal 
+  splitCount     Int
+  completedCount Int     @default(0)
+
+  targetRate   Decimal? 
+  intervalDays Int?
+
+  status String @default("ACTIVE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  portfolio  Portfolio        @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  executions SplitExecution[]
+}
+
+model SplitExecution {
+  id          String @id @default(cuid())
+  splitPlanId String
+
+  amount     Decimal  
+  rate       Decimal  
+  executedAt DateTime
+
+  splitPlan SplitPlan @relation(fields: [splitPlanId], references: [id], onDelete: Cascade)
+}
+
+// ==================== 알림 ====================
+model Alert {
+  id     String @id @default(cuid())
+  userId String
+
+  currency String @default("USD")
+  type     String
+
+  targetRate Decimal? 
+  direction  String?
+
+  changeRate Decimal? 
+
+  dailyTime String?
+
+  isActive        Boolean   @default(true)
+  lastTriggeredAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isActive])
+}
+
+model AlertLog {
+  id      String  @id @default(cuid())
+  userId  String
+  alertId String?
+
+  type    String
+  title   String
+  message String
+  rate    Decimal? 
+
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// ==================== 환율 데이터 ====================
+model ExchangeRate {
+  id String @id @default(cuid())
+
+  currency      String
+  rate          Decimal 
+  change        Decimal 
+  changePercent Decimal 
+  high          Decimal 
+  low           Decimal 
+
+  timestamp DateTime
+  createdAt DateTime @default(now())
+
+  @@unique([currency, timestamp])
+  @@index([currency, timestamp])
+}
