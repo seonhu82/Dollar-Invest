@@ -16,7 +16,7 @@ export async function POST(request: Request) {
 
     // 브릿지 상태 확인
     const status = await getBridgeStatus();
-    if (!status.connected || !status.hana_connected) {
+    if (!status.connected || !status.hanaConnected) {
       return NextResponse.json(
         { error: "하나증권에 연결되어 있지 않습니다." },
         { status: 503 }

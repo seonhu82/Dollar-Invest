@@ -19,7 +19,7 @@ export async function GET() {
     return NextResponse.json(
       {
         connected: false,
-        hana_connected: false,
+        hanaConnected: false,
         version: null,
         last_sync: null,
         error: "브릿지에 연결할 수 없습니다",
