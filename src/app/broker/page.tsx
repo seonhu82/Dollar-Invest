@@ -214,31 +214,16 @@ export default function BrokerPage() {
     }
   };
 
-  const handleBridgeDownload = async () => {
+  const handleBridgeDownload = () => {
     setDownloading(true);
-    try {
-      const res = await fetch("/api/bridge/download", {
-        method: "POST",
-      });
-
-      if (!res.ok) {
-        throw new Error("다운로드에 실패했습니다.");
-      }
-
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "dollar-invest-bridge-readme.txt";
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "다운로드에 실패했습니다.");
-    } finally {
-      setDownloading(false);
-    }
+    // 직접 파일 다운로드 링크 사용
+    const a = document.createElement("a");
+    a.href = "/DollarInvestBridge.exe";
+    a.download = "DollarInvestBridge.exe";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setDownloading(false);
   };
 
   const hanaAccounts = accounts.filter((a) => a.broker === "HANA");
