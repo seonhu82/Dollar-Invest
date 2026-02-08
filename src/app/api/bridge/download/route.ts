@@ -5,12 +5,12 @@ import path from "path";
 // PC 브릿지 정보
 const BRIDGE_INFO = {
   version: "1.0.0",
-  releaseDate: "2026-02-08",
-  fileName: "dollar-invest-bridge.zip",
-  fileSize: "~10 KB",
+  releaseDate: "2026-02-09",
+  fileName: "DollarInvestBridge.exe",
+  fileSize: "~55 MB",
   requirements: {
     os: "Windows 10 이상",
-    runtime: "Python 3.8+",
+    runtime: "설치 불필요 (단일 실행파일)",
     broker: "하나증권 1Q Open API",
   },
   changelog: [
@@ -27,21 +27,21 @@ export async function GET() {
   return NextResponse.json({
     available: true,
     info: BRIDGE_INFO,
-    downloadUrl: "/dollar-invest-bridge.zip",
+    downloadUrl: "/DollarInvestBridge.exe",
   });
 }
 
 // POST: 브릿지 다운로드
 export async function POST() {
   try {
-    const filePath = path.join(process.cwd(), "public", "dollar-invest-bridge.zip");
+    const filePath = path.join(process.cwd(), "public", "DollarInvestBridge.exe");
     const fileBuffer = await readFile(filePath);
 
     return new NextResponse(fileBuffer, {
       status: 200,
       headers: {
-        "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename="dollar-invest-bridge.zip"`,
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename="DollarInvestBridge.exe"`,
         "Content-Length": fileBuffer.length.toString(),
       },
     });
