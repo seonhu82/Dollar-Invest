@@ -130,16 +130,17 @@ export async function hanaDisconnect(): Promise<{ success: boolean }> {
 /**
  * 외화 잔고 조회
  */
-export async function getHanaBalance(accountNo: string): Promise<{
+export async function getHanaBalance(accountNo?: string): Promise<{
   success: boolean;
   balance?: HanaBalance;
+  balances?: HanaBalance[];
   error?: string;
 }> {
   try {
     const response = await fetch(`${BRIDGE_URL}/api/hana/balance`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountNo }),
+      body: JSON.stringify({ accountNo: accountNo || "" }),
       signal: AbortSignal.timeout(TIMEOUT),
     });
 
@@ -149,7 +150,11 @@ export async function getHanaBalance(accountNo: string): Promise<{
       return { success: false, error: data.error || "잔고 조회 실패" };
     }
 
-    return { success: true, balance: data.balance };
+    return {
+      success: true,
+      balance: data.balance,
+      balances: data.balances || (data.balance ? [data.balance] : []),
+    };
   } catch (error) {
     return {
       success: false,
@@ -282,8 +287,8 @@ export async function getHanaOrders(params: {
 /**
  * 거래 내역 동기화 (웹 앱 -> DB 저장용)
  */
-export async function syncHanaTransactions(params: {
-  accountNo: string;
+export async function syncHanaTransactions(params?: {
+  accountNo?: string;
   startDate?: string;
   endDate?: string;
 }): Promise<{
@@ -294,11 +299,18 @@ export async function syncHanaTransactions(params: {
     currency: string;
     amount: number;
     rate: number;
+    krwAmount: number;
+    fee: number;
+    tradedAt: string;
     orderedAt: string;
   }>;
   error?: string;
 }> {
-  const result = await getHanaOrders(params);
+  const result = await getHanaOrders({
+    accountNo: params?.accountNo || "",
+    startDate: params?.startDate,
+    endDate: params?.endDate,
+  });
 
   if (!result.success) {
     return { success: false, error: result.error };
@@ -312,6 +324,9 @@ export async function syncHanaTransactions(params: {
       currency: order.currency,
       amount: order.amount,
       rate: order.rate,
+      krwAmount: order.amount * order.rate,
+      fee: 0,
+      tradedAt: order.orderedAt,
       orderedAt: order.orderedAt,
     })),
   };

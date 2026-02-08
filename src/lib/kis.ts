@@ -474,7 +474,7 @@ export async function syncKISTransactions(
     const existing = await prisma.transaction.findFirst({
       where: {
         portfolioId: portfolio.id,
-        brokerOrderId: tx.orderId,
+        orderId: tx.orderId,
       },
     });
 

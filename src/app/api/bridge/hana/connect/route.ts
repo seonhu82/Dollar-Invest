@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     }
 
     // 하나증권 연결 시도
-    const result = await hanaConnect(accountNo);
+    const result = await hanaConnect();
 
     if (!result.success) {
       return NextResponse.json(
