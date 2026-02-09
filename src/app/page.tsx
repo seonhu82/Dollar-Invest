@@ -213,7 +213,7 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
             {mainRates.length > 0 ? (
               mainRates.map((rate) => (
                 <RateCard

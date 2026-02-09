@@ -57,11 +57,11 @@ export function RateCard({
       </CardHeader>
       <CardContent className="space-y-2">
         <div>
-          <div className="text-2xl font-bold tabular-nums text-gray-900">
+          <div className="text-xl sm:text-2xl font-bold tabular-nums text-gray-900">
             {formatRate(rate)}
-            <span className="text-sm font-normal text-muted-foreground ml-1">원</span>
+            <span className="text-xs sm:text-sm font-normal text-muted-foreground ml-1">원</span>
           </div>
-          <div className="flex items-center gap-1.5 text-xs mt-1">
+          <div className="flex items-center gap-1 text-[10px] sm:text-xs mt-1">
             <span
               className={cn(
                 "tabular-nums font-medium",

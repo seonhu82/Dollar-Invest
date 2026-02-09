@@ -65,7 +65,7 @@ export function Header() {
         </Link>
 
         {/* 네비게이션 */}
-        <nav className="flex items-center space-x-1 text-sm">
+        <nav className="flex items-center space-x-0.5 sm:space-x-1 text-sm overflow-x-auto scrollbar-hide">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
             return (
@@ -73,14 +73,14 @@ export function Header() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-colors",
+                  "flex items-center space-x-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
                   isActive
                     ? "bg-white text-gray-900 font-medium shadow-sm"
                     : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
                 )}
               >
                 <item.icon className="h-4 w-4" />
-                <span className="hidden md:inline-block">{item.name}</span>
+                <span className="hidden lg:inline-block">{item.name}</span>
               </Link>
             );
           })}
@@ -89,14 +89,14 @@ export function Header() {
             <Link
               href="/admin"
               className={cn(
-                "flex items-center space-x-1.5 px-3 py-1.5 rounded-lg transition-colors",
+                "flex items-center space-x-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
                 pathname === "/admin"
                   ? "bg-red-100 text-red-700 font-medium shadow-sm"
                   : "text-red-500 hover:text-red-700 hover:bg-red-50"
               )}
             >
               <Shield className="h-4 w-4" />
-              <span className="hidden md:inline-block">관리자</span>
+              <span className="hidden lg:inline-block">관리자</span>
             </Link>
           )}
         </nav>
