@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const BRIDGE_URL = "http://127.0.0.1:8765";
+const BRIDGE_URL = process.env.BRIDGE_URL || "http://127.0.0.1:8585";
 
 export async function GET() {
   try {

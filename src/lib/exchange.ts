@@ -43,7 +43,7 @@ async function fetchFromKoreaExim(): Promise<ExchangeRateData[] | null> {
     const today = new Date();
     const searchDate = today.toISOString().split("T")[0].replace(/-/g, "");
 
-    const url = `https://www.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${apiKey}&searchdate=${searchDate}&data=AP01`;
+    const url = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${apiKey}&searchdate=${searchDate}&data=AP01`;
 
     const response = await fetch(url, {
       headers: { "Content-Type": "application/json" },
@@ -91,7 +91,7 @@ async function fetchFromKoreaExim(): Promise<ExchangeRateData[] | null> {
         rate: normalizedRate,
         change: Math.round(change * 100) / 100,
         changePercent: Math.round(changePercent * 100) / 100,
-        high: normalizedRate, // 수출입은행 API는 고가/저가 미제공
+        high: normalizedRate, // 아래에서 7일 고가/저가로 업데이트
         low: normalizedRate,
         timestamp: new Date().toISOString(),
       });
@@ -167,9 +167,52 @@ async function fetchFromExchangeRateAPI(): Promise<ExchangeRateData[] | null> {
 }
 
 /**
- * 어제 환율 조회 (DB에서)
+ * 어제 환율 조회 (한국수출입은행 API에서 직접)
  */
 async function getYesterdayRates(): Promise<Record<string, number>> {
+  const apiKey = process.env.KOREA_EXIM_API_KEY;
+
+  // API에서 어제 환율 가져오기 시도
+  if (apiKey) {
+    try {
+      // 어제 날짜 (주말 건너뛰기)
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      // 주말이면 금요일로
+      const day = yesterday.getDay();
+      if (day === 0) yesterday.setDate(yesterday.getDate() - 2); // 일요일 -> 금요일
+      if (day === 6) yesterday.setDate(yesterday.getDate() - 1); // 토요일 -> 금요일
+
+      const searchDate = yesterday.toISOString().split("T")[0].replace(/-/g, "");
+      const url = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${apiKey}&searchdate=${searchDate}&data=AP01`;
+
+      const response = await fetch(url, {
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const result: Record<string, number> = {};
+          for (const item of data) {
+            const currencyMatch = item.cur_unit?.match(/^([A-Z]{3})/);
+            const currency = currencyMatch ? currencyMatch[1] : item.cur_unit;
+            const rate = parseFloat(item.deal_bas_r?.replace(/,/g, "") || "0");
+            const normalizedRate = currency === "JPY" ? rate / 100 : rate;
+            if (SUPPORTED_CURRENCIES.includes(currency)) {
+              result[currency] = normalizedRate;
+            }
+          }
+          return result;
+        }
+      }
+    } catch (error) {
+      console.error("어제 환율 조회 오류:", error);
+    }
+  }
+
+  // API 실패시 DB에서 조회
   try {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
@@ -264,6 +307,9 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
     rates = getDefaultRates();
   }
 
+  // 7일간 고가/저가 계산
+  rates = await addHighLowFromHistory(rates);
+
   // 캐시 업데이트
   rateCache = { data: rates, timestamp: Date.now() };
 
@@ -271,6 +317,69 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
   saveRatesToDB(rates).catch(console.error);
 
   return rates;
+}
+
+/**
+ * 7일간 고가/저가 추가
+ */
+async function addHighLowFromHistory(rates: ExchangeRateData[]): Promise<ExchangeRateData[]> {
+  const apiKey = process.env.KOREA_EXIM_API_KEY;
+  if (!apiKey) return rates;
+
+  try {
+    const highLowMap: Record<string, { high: number; low: number }> = {};
+
+    // 최근 7일 데이터 조회
+    const today = new Date();
+    for (let i = 0; i < 7; i++) {
+      const targetDate = new Date(today);
+      targetDate.setDate(today.getDate() - i);
+
+      const day = targetDate.getDay();
+      if (day === 0 || day === 6) continue; // 주말 건너뛰기
+
+      const dateStr = targetDate.toISOString().split("T")[0].replace(/-/g, "");
+
+      try {
+        const url = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${apiKey}&searchdate=${dateStr}&data=AP01`;
+        const response = await fetch(url, {
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (Array.isArray(data)) {
+            for (const item of data) {
+              const currencyMatch = item.cur_unit?.match(/^([A-Z]{3})/);
+              const currency = currencyMatch ? currencyMatch[1] : item.cur_unit;
+              if (!SUPPORTED_CURRENCIES.includes(currency)) continue;
+
+              const rate = parseFloat(item.deal_bas_r?.replace(/,/g, "") || "0");
+              const normalizedRate = currency === "JPY" ? rate / 100 : rate;
+
+              if (!highLowMap[currency]) {
+                highLowMap[currency] = { high: normalizedRate, low: normalizedRate };
+              } else {
+                highLowMap[currency].high = Math.max(highLowMap[currency].high, normalizedRate);
+                highLowMap[currency].low = Math.min(highLowMap[currency].low, normalizedRate);
+              }
+            }
+          }
+        }
+      } catch {
+        // 개별 날짜 실패는 무시
+      }
+    }
+
+    // rates에 고가/저가 적용
+    return rates.map((r) => ({
+      ...r,
+      high: highLowMap[r.currency]?.high || r.rate,
+      low: highLowMap[r.currency]?.low || r.rate,
+    }));
+  } catch {
+    return rates;
+  }
 }
 
 /**
@@ -324,17 +433,79 @@ function getDefaultRates(): ExchangeRateData[] {
 }
 
 /**
- * 환율 히스토리 조회
+ * 환율 히스토리 조회 (한국수출입은행 API + DB)
  */
 export async function getExchangeRateHistory(
   currency: string,
   days: number = 30
 ): Promise<{ date: string; rate: number }[]> {
+  const apiKey = process.env.KOREA_EXIM_API_KEY;
+  const dailyRates = new Map<string, number>();
+
+  // 1. 한국수출입은행 API에서 과거 데이터 조회
+  if (apiKey) {
+    const today = new Date();
+    const fetchPromises: Promise<void>[] = [];
+
+    for (let i = 0; i < days; i++) {
+      const targetDate = new Date(today);
+      targetDate.setDate(today.getDate() - i);
+
+      // 주말 건너뛰기
+      const day = targetDate.getDay();
+      if (day === 0 || day === 6) continue;
+
+      const dateStr = targetDate.toISOString().split("T")[0].replace(/-/g, "");
+      const dateKey = targetDate.toISOString().split("T")[0];
+
+      const fetchPromise = (async () => {
+        try {
+          const url = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${apiKey}&searchdate=${dateStr}&data=AP01`;
+          const response = await fetch(url, {
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                const currencyMatch = item.cur_unit?.match(/^([A-Z]{3})/);
+                const curr = currencyMatch ? currencyMatch[1] : item.cur_unit;
+                if (curr === currency) {
+                  const rate = parseFloat(item.deal_bas_r?.replace(/,/g, "") || "0");
+                  const normalizedRate = currency === "JPY" ? rate / 100 : rate;
+                  dailyRates.set(dateKey, normalizedRate);
+                  break;
+                }
+              }
+            }
+          }
+        } catch {
+          // 개별 날짜 실패는 무시
+        }
+      })();
+
+      fetchPromises.push(fetchPromise);
+
+      // API 과부하 방지: 5개씩 병렬 처리
+      if (fetchPromises.length >= 5) {
+        await Promise.all(fetchPromises);
+        fetchPromises.length = 0;
+      }
+    }
+
+    // 남은 요청 처리
+    if (fetchPromises.length > 0) {
+      await Promise.all(fetchPromises);
+    }
+  }
+
+  // 2. DB에서 추가 데이터 보완
   try {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
-    const rates = await prisma.exchangeRate.findMany({
+    const dbRates = await prisma.exchangeRate.findMany({
       where: {
         currency,
         timestamp: { gte: startDate },
@@ -346,18 +517,18 @@ export async function getExchangeRateHistory(
       },
     });
 
-    // 날짜별 그룹화 (하루에 여러 개면 마지막 것만)
-    const dailyRates = new Map<string, number>();
-    for (const rate of rates) {
+    for (const rate of dbRates) {
       const dateKey = rate.timestamp.toISOString().split("T")[0];
-      dailyRates.set(dateKey, Number(rate.rate));
+      if (!dailyRates.has(dateKey)) {
+        dailyRates.set(dateKey, Number(rate.rate));
+      }
     }
-
-    return Array.from(dailyRates.entries()).map(([date, rate]) => ({
-      date,
-      rate,
-    }));
   } catch {
-    return [];
+    // DB 오류 무시
   }
+
+  // 날짜순 정렬
+  return Array.from(dailyRates.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, rate]) => ({ date, rate }));
 }

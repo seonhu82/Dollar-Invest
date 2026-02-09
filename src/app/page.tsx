@@ -28,29 +28,17 @@ interface ExchangeRate {
   timestamp: string;
 }
 
-// 임시 포트폴리오 데이터 (나중에 API로 대체)
-const mockPortfolios = [
-  {
-    id: "1",
-    name: "달러 포트폴리오",
-    currency: "USD",
-    currentBalance: 5000,
-    avgBuyRate: 1320.5,
-    totalInvested: 6602500,
-    currentRate: 1350.5,
-    broker: "HANA",
-  },
-  {
-    id: "2",
-    name: "유로 투자",
-    currency: "EUR",
-    currentBalance: 1000,
-    avgBuyRate: 1450.0,
-    totalInvested: 1450000,
-    currentRate: 1465.3,
-    broker: "KIS",
-  },
-];
+// 포트폴리오 데이터 (API 연동 전까지 빈 배열)
+const mockPortfolios: {
+  id: string;
+  name: string;
+  currency: string;
+  currentBalance: number;
+  avgBuyRate: number;
+  totalInvested: number;
+  currentRate: number;
+  broker: string;
+}[] = [];
 
 export default function DashboardPage() {
   const [rates, setRates] = useState<ExchangeRate[]>([]);

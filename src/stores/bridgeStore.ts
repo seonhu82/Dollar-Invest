@@ -18,7 +18,7 @@ interface BridgeState {
   setError: (error: string | null) => void;
 }
 
-const BRIDGE_URL = "http://127.0.0.1:8585";
+const BRIDGE_URL = process.env.NEXT_PUBLIC_BRIDGE_URL || "http://127.0.0.1:8585";
 
 export const useBridgeStore = create<BridgeState>((set) => ({
   connected: false,

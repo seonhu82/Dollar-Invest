@@ -95,22 +95,27 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
   useEffect(() => {
     if (!chartContainerRef.current) return;
 
+    // 컨테이너 크기 확인
+    const containerWidth = chartContainerRef.current.clientWidth || chartContainerRef.current.offsetWidth || 800;
+    const containerHeight = chartContainerRef.current.clientHeight || 450;
+
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: "transparent" },
+        background: { type: ColorType.Solid, color: "#ffffff" },
         textColor: "#9CA3AF",
       },
       grid: {
-        vertLines: { color: "#374151", style: 1 },
-        horzLines: { color: "#374151", style: 1 },
+        vertLines: { color: "#E5E7EB", style: 1 },
+        horzLines: { color: "#E5E7EB", style: 1 },
       },
-      width: chartContainerRef.current.clientWidth,
-      height: 350,
+      width: containerWidth,
+      height: containerHeight,
+      autoSize: true,
       rightPriceScale: {
-        borderColor: "#374151",
+        borderColor: "#E5E7EB",
       },
       timeScale: {
-        borderColor: "#374151",
+        borderColor: "#E5E7EB",
         timeVisible: true,
         secondsVisible: false,
       },
@@ -149,18 +154,22 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
     // 리사이즈 핸들러
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-        });
+        const newWidth = chartContainerRef.current.clientWidth || chartContainerRef.current.offsetWidth || 800;
+        const newHeight = chartContainerRef.current.clientHeight || 450;
+        chartRef.current.applyOptions({ width: newWidth, height: newHeight });
+        chartRef.current.timeScale().fitContent();
       }
     };
 
     window.addEventListener("resize", handleResize);
 
-    // 초기 데이터 로드
-    fetchHistory(selectedPeriod);
+    // 약간의 딜레이 후 초기 데이터 로드 (DOM 렌더링 완료 대기)
+    const timer = setTimeout(() => {
+      fetchHistory(selectedPeriod);
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       window.removeEventListener("resize", handleResize);
       chart.remove();
     };
@@ -244,19 +253,20 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
 
       <CardContent>
         {loading && !stats && (
-          <div className="h-[350px] flex items-center justify-center">
+          <div className="h-[450px] flex items-center justify-center">
             <div className="text-muted-foreground">차트 로딩 중...</div>
           </div>
         )}
 
         {error && (
-          <div className="h-[350px] flex items-center justify-center">
+          <div className="h-[450px] flex items-center justify-center">
             <div className="text-destructive">{error}</div>
           </div>
         )}
 
         <div
           ref={chartContainerRef}
+          style={{ height: "450px", width: "100%", minHeight: "400px" }}
           className={`${loading && !stats ? "hidden" : ""} ${error ? "hidden" : ""}`}
         />
       </CardContent>
