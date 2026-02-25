@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getExchangeRateHistory } from "@/lib/exchange";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const maxDuration = 30; // Vercel/Railway 타임아웃 확장
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);

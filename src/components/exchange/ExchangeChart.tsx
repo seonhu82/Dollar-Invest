@@ -97,7 +97,7 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
 
     // 컨테이너 크기 확인
     const containerWidth = chartContainerRef.current.clientWidth || chartContainerRef.current.offsetWidth || 800;
-    const containerHeight = chartContainerRef.current.clientHeight || 450;
+    const containerHeight = chartContainerRef.current.clientHeight || 350;
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
@@ -155,7 +155,7 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
         const newWidth = chartContainerRef.current.clientWidth || chartContainerRef.current.offsetWidth || 800;
-        const newHeight = chartContainerRef.current.clientHeight || 450;
+        const newHeight = chartContainerRef.current.clientHeight || 350;
         chartRef.current.applyOptions({ width: newWidth, height: newHeight });
         chartRef.current.timeScale().fitContent();
       }
@@ -186,15 +186,17 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
 
   return (
     <Card className={className}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>{currency}/KRW 차트</CardTitle>
-          <div className="flex gap-1">
+      <CardHeader className="pb-3">
+        {/* 타이틀 + 기간 버튼: 모바일에서 세로 정렬 */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <CardTitle className="text-base sm:text-lg">{currency}/KRW 차트</CardTitle>
+          <div className="flex gap-1 flex-wrap">
             {PERIODS.map((period) => (
               <Button
                 key={period.days}
                 variant={selectedPeriod === period.days ? "default" : "outline"}
                 size="sm"
+                className="h-7 px-2 text-xs sm:h-8 sm:px-3 sm:text-sm"
                 onClick={() => setSelectedPeriod(period.days)}
               >
                 {period.label}
@@ -203,19 +205,19 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
           </div>
         </div>
 
-        {/* 통계 정보 */}
+        {/* 통계 정보: 모바일에서 2x2 그리드 */}
         {stats && (
-          <div className="flex items-center gap-6 mt-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">현재가</span>
-              <p className="text-xl font-bold tabular-nums">
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-3 sm:gap-6 mt-3 text-sm">
+            <div className="min-w-0">
+              <span className="text-xs text-muted-foreground">현재가</span>
+              <p className="text-lg sm:text-xl font-bold tabular-nums truncate">
                 {stats.current.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}
               </p>
             </div>
-            <div>
-              <span className="text-muted-foreground">변동</span>
+            <div className="min-w-0">
+              <span className="text-xs text-muted-foreground">변동</span>
               <p
-                className={`text-lg font-semibold tabular-nums flex items-center gap-1 ${
+                className={`text-sm sm:text-lg font-semibold tabular-nums flex items-center gap-1 ${
                   stats.change > 0
                     ? "text-red-500"
                     : stats.change < 0
@@ -224,26 +226,28 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
                 }`}
               >
                 {stats.change > 0 ? (
-                  <TrendingUp className="h-4 w-4" />
+                  <TrendingUp className="h-3.5 w-3.5 shrink-0" />
                 ) : stats.change < 0 ? (
-                  <TrendingDown className="h-4 w-4" />
+                  <TrendingDown className="h-3.5 w-3.5 shrink-0" />
                 ) : (
-                  <Minus className="h-4 w-4" />
+                  <Minus className="h-3.5 w-3.5 shrink-0" />
                 )}
-                {stats.change > 0 ? "+" : ""}
-                {stats.change.toFixed(2)} ({stats.changePercent > 0 ? "+" : ""}
-                {stats.changePercent.toFixed(2)}%)
+                <span className="truncate">
+                  {stats.change > 0 ? "+" : ""}
+                  {stats.change.toFixed(2)} ({stats.changePercent > 0 ? "+" : ""}
+                  {stats.changePercent.toFixed(2)}%)
+                </span>
               </p>
             </div>
-            <div>
-              <span className="text-muted-foreground">최고</span>
-              <p className="text-lg font-semibold tabular-nums text-red-500">
+            <div className="min-w-0">
+              <span className="text-xs text-muted-foreground">최고</span>
+              <p className="text-sm sm:text-lg font-semibold tabular-nums text-red-500 truncate">
                 {stats.high.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}
               </p>
             </div>
-            <div>
-              <span className="text-muted-foreground">최저</span>
-              <p className="text-lg font-semibold tabular-nums text-blue-500">
+            <div className="min-w-0">
+              <span className="text-xs text-muted-foreground">최저</span>
+              <p className="text-sm sm:text-lg font-semibold tabular-nums text-blue-500 truncate">
                 {stats.low.toLocaleString("ko-KR", { maximumFractionDigits: 2 })}
               </p>
             </div>
@@ -253,20 +257,20 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
 
       <CardContent>
         {loading && !stats && (
-          <div className="h-[450px] flex items-center justify-center">
+          <div className="h-[300px] sm:h-[350px] flex items-center justify-center">
             <div className="text-muted-foreground">차트 로딩 중...</div>
           </div>
         )}
 
         {error && (
-          <div className="h-[450px] flex items-center justify-center">
+          <div className="h-[300px] sm:h-[350px] flex items-center justify-center">
             <div className="text-destructive">{error}</div>
           </div>
         )}
 
         <div
           ref={chartContainerRef}
-          style={{ height: "450px", width: "100%", minHeight: "400px" }}
+          style={{ height: "350px", width: "100%", minHeight: "280px" }}
           className={`${loading && !stats ? "hidden" : ""} ${error ? "hidden" : ""}`}
         />
       </CardContent>

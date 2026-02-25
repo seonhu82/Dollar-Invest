@@ -7,12 +7,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const publicDir = join(__dirname, '..', 'public');
 
 // SVG 아이콘 원본 (헤더 로고와 동일: 검은 배경 + 흰색 달러 사인)
+// text 기반으로 모든 크기에서 선명하게 렌더링
 const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" rx="108" fill="#111827"/>
-  <g transform="translate(256,256)" fill="none" stroke="white" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
-    <line x1="0" y1="-160" x2="0" y2="160"/>
-    <path d="M80,-120 C80,-120 80,-120 0,-120 C-88,-120 -88,-20 0,-20 C88,-20 88,80 0,80 C0,80 0,80 -80,80" fill="none"/>
-  </g>
+  <text x="256" y="380" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="380" fill="white">$</text>
 </svg>`;
 
 const sizes = [

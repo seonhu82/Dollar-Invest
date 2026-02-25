@@ -535,7 +535,7 @@ async function fetchHistoryFromFrankfurter(
     const url = `https://api.frankfurter.app/${startStr}..${endStr}?from=${currency}&to=KRW`;
 
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(25000), // 1년 데이터 조회 시 충분한 시간
     });
 
     if (!response.ok) {

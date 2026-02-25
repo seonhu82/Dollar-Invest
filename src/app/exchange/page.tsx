@@ -33,7 +33,7 @@ export default function ExchangePage() {
   const fetchRates = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/exchange/rates");
+      const res = await fetch("/api/exchange/rates?realtime=true");
       const data = await res.json();
       if (data.rates) {
         setRates(data.rates);
@@ -67,20 +67,20 @@ export default function ExchangePage() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* 헤더 */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">환율 정보</h1>
-            <p className="text-muted-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold">환율 정보</h1>
+            <p className="text-sm text-muted-foreground">
               실시간 환율 정보를 확인하세요
             </p>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              {lastUpdated && `마지막 업데이트: ${new Date(lastUpdated).toLocaleTimeString("ko-KR")}`}
+          <div className="flex items-center gap-3">
+            <span className="text-xs sm:text-sm text-muted-foreground">
+              {lastUpdated && new Date(lastUpdated).toLocaleTimeString("ko-KR") + " 기준"}
             </span>
             <Button variant="outline" size="sm" onClick={fetchRates} disabled={loading}>
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
-              새로고침
+              <RefreshCw className={`h-4 w-4 mr-1 ${loading ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">새로고침</span>
             </Button>
           </div>
         </div>
