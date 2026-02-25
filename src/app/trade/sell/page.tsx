@@ -4,10 +4,10 @@ import { Header } from "@/components/layout/Header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatKRW, formatRate, formatCurrency } from "@/lib/utils";
-import { ArrowLeft, Info, AlertCircle, Check } from "lucide-react";
+import { ArrowLeft, Info, AlertCircle, Check, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 interface Portfolio {
@@ -22,6 +22,8 @@ interface ExchangeRate {
   currency: string;
   rate: number;
 }
+
+const RATE_REFRESH_INTERVAL = 30 * 1000; // 30초
 
 function SellForm() {
   const router = useRouter();
@@ -43,36 +45,71 @@ function SellForm() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    fetchData();
+  // 실시간 환율 관련
+  const [rateUpdatedAt, setRateUpdatedAt] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchRates = useCallback(async (showRefreshing = false) => {
+    if (showRefreshing) setIsRefreshing(true);
+    try {
+      const rateRes = await fetch("/api/exchange/rates?realtime=true");
+      const rateData = await rateRes.json();
+      if (rateData.rates) {
+        setRates(rateData.rates);
+        setRateUpdatedAt(new Date());
+      }
+    } catch {
+      // 조용히 실패 (이전 데이터 유지)
+    } finally {
+      setIsRefreshing(false);
+    }
   }, []);
 
-  const fetchData = async () => {
-    try {
-      const [portfolioRes, rateRes] = await Promise.all([
-        fetch("/api/portfolios"),
-        fetch("/api/exchange/rates"),
-      ]);
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [portfolioRes, rateRes] = await Promise.all([
+          fetch("/api/portfolios"),
+          fetch("/api/exchange/rates?realtime=true"),
+        ]);
 
-      const portfolioData = await portfolioRes.json();
-      const rateData = await rateRes.json();
+        const portfolioData = await portfolioRes.json();
+        const rateData = await rateRes.json();
 
-      const portfoliosWithBalance = (portfolioData.portfolios || []).filter(
-        (p: Portfolio) => p.currentBalance > 0
-      );
+        const portfoliosWithBalance = (portfolioData.portfolios || []).filter(
+          (p: Portfolio) => p.currentBalance > 0
+        );
 
-      setPortfolios(portfoliosWithBalance);
-      setRates(rateData.rates || []);
+        setPortfolios(portfoliosWithBalance);
+        setRates(rateData.rates || []);
+        setRateUpdatedAt(new Date());
 
-      if (!preselectedPortfolioId && portfoliosWithBalance.length > 0) {
-        setPortfolioId(portfoliosWithBalance[0].id);
+        if (!preselectedPortfolioId && portfoliosWithBalance.length > 0) {
+          setPortfolioId(portfoliosWithBalance[0].id);
+        }
+      } catch (err) {
+        setError("데이터를 불러오는데 실패했습니다.");
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setError("데이터를 불러오는데 실패했습니다.");
-    } finally {
-      setLoading(false);
-    }
-  };
+    };
+
+    fetchData();
+  }, [preselectedPortfolioId]);
+
+  // 30초마다 환율 자동 갱신
+  useEffect(() => {
+    refreshTimerRef.current = setInterval(() => {
+      fetchRates();
+    }, RATE_REFRESH_INTERVAL);
+
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  }, [fetchRates]);
 
   const selectedPortfolio = portfolios.find((p) => p.id === portfolioId);
   const currency = selectedPortfolio?.currency || "USD";
@@ -94,6 +131,10 @@ function SellForm() {
     setAmount(balance.toString());
   };
 
+  const handleRefreshRate = () => {
+    fetchRates(true);
+  };
+
   const handleSubmit = async () => {
     if (!portfolioId || amountNum <= 0 || effectiveRate <= 0) return;
 
@@ -106,6 +147,33 @@ function SellForm() {
     setIsSubmitting(true);
 
     try {
+      // 제출 직전 최신 환율 확인 (캐시 무시)
+      if (!useCustomRate) {
+        const freshRes = await fetch("/api/exchange/rates?realtime=true");
+        const freshData = await freshRes.json();
+        const freshRate = freshData.rates?.find(
+          (r: ExchangeRate) => r.currency === currency
+        )?.rate;
+
+        if (freshRate && Math.abs(freshRate - effectiveRate) > effectiveRate * 0.005) {
+          // 0.5% 이상 변동 시 경고 후 새 환율 적용
+          setRates(freshData.rates);
+          setRateUpdatedAt(new Date());
+          setError(
+            `환율이 변동되었습니다 (${formatRate(effectiveRate)} → ${formatRate(freshRate)}원). 새 환율을 확인 후 다시 시도해주세요.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (freshRate) {
+          setRates(freshData.rates);
+          setRateUpdatedAt(new Date());
+        }
+      }
+
+      const submitRate = useCustomRate ? effectiveRate : (rates.find((r) => r.currency === currency)?.rate || effectiveRate);
+
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -113,7 +181,7 @@ function SellForm() {
           portfolioId,
           type: "SELL",
           amount: amountNum,
-          rate: effectiveRate,
+          rate: submitRate,
           fee: feeNum,
           memo: memo || undefined,
           tradedAt: new Date(tradedAt).toISOString(),
@@ -295,13 +363,34 @@ function SellForm() {
               </span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 p-3 bg-secondary rounded-lg">
-              <Info className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm">
-                현재 환율:{" "}
-                <strong className="tabular-nums">{formatRate(currentRate)}</strong>{" "}
-                원/{currency}
-              </span>
+            <div className="p-3 bg-secondary rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+                  </span>
+                  <span className="text-sm">
+                    실시간 환율:{" "}
+                    <strong className="tabular-nums text-base">{formatRate(currentRate)}</strong>{" "}
+                    원/{currency}
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRefreshRate}
+                  disabled={isRefreshing}
+                  className="h-7 px-2"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+                </Button>
+              </div>
+              {rateUpdatedAt && (
+                <p className="text-xs text-muted-foreground mt-1 ml-4.5">
+                  {rateUpdatedAt.toLocaleTimeString("ko-KR")} 기준 (30초마다 자동 갱신)
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -394,7 +483,7 @@ function SellForm() {
           onClick={handleSubmit}
         >
           {isSubmitting
-            ? "처리 중..."
+            ? "환율 확인 중..."
             : `${amountNum.toLocaleString()} ${currency} 매도 기록`}
         </Button>
       </CardContent>

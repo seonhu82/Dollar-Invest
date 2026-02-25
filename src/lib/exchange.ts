@@ -4,6 +4,7 @@
  * 데이터 소스:
  * 1. 한국수출입은행 Open API (primary) - 공식 환율
  * 2. ExchangeRate-API (fallback) - 무료 백업
+ * 3. Frankfurter API (히스토리) - 무료, 키 불필요, 날짜 범위 지원
  */
 
 import { prisma } from "./prisma";
@@ -47,16 +48,24 @@ async function fetchFromKoreaExim(): Promise<ExchangeRateData[] | null> {
 
     const response = await fetch(url, {
       headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(10000),
       next: { revalidate: 300 }, // 5분 캐시
     });
 
     if (!response.ok) {
+      console.error(`한국수출입은행 API HTTP ${response.status}: ${response.statusText}`);
       throw new Error(`API 응답 오류: ${response.status}`);
     }
 
     const data = await response.json();
 
-    if (!Array.isArray(data) || data.length === 0) {
+    // API 에러 응답 처리 (result=2: 인증키 오류, result=4: 일일 제한 초과)
+    if (!Array.isArray(data)) {
+      console.error("한국수출입은행 API 비정상 응답:", JSON.stringify(data));
+      return null;
+    }
+
+    if (data.length === 0) {
       // 주말/공휴일에는 데이터가 없을 수 있음
       console.log("한국수출입은행: 오늘 환율 데이터 없음 (주말/공휴일)");
       return null;
@@ -113,7 +122,7 @@ async function fetchFromExchangeRateAPI(): Promise<ExchangeRateData[] | null> {
     // 무료 API (API 키 불필요)
     const response = await fetch(
       "https://open.er-api.com/v6/latest/USD",
-      { next: { revalidate: 300 } }
+      { signal: AbortSignal.timeout(10000), next: { revalidate: 300 } }
     );
 
     if (!response.ok) {
@@ -162,6 +171,57 @@ async function fetchFromExchangeRateAPI(): Promise<ExchangeRateData[] | null> {
     return rates;
   } catch (error) {
     console.error("ExchangeRate-API 오류:", error);
+    return null;
+  }
+}
+
+/**
+ * Frankfurter API에서 현재 환율 조회 (무료, ECB 기반)
+ * https://frankfurter.app/
+ */
+async function fetchFromFrankfurter(): Promise<ExchangeRateData[] | null> {
+  try {
+    const response = await fetch(
+      "https://api.frankfurter.app/latest?from=KRW",
+      { signal: AbortSignal.timeout(10000) }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Frankfurter API 응답 오류: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (!data.rates) return null;
+
+    const yesterdayRates = await getYesterdayRates();
+    const rates: ExchangeRateData[] = [];
+
+    for (const currency of SUPPORTED_CURRENCIES) {
+      const foreignPerKrw = data.rates[currency];
+      if (!foreignPerKrw) continue;
+
+      // 1 외화 = X KRW (역수)
+      const rate = Math.round((1 / foreignPerKrw) * 100) / 100;
+
+      const yesterdayRate = yesterdayRates[currency] || rate;
+      const change = rate - yesterdayRate;
+      const changePercent = yesterdayRate > 0 ? (change / yesterdayRate) * 100 : 0;
+
+      rates.push({
+        currency,
+        currencyName: "KRW",
+        rate,
+        change: Math.round(change * 100) / 100,
+        changePercent: Math.round(changePercent * 100) / 100,
+        high: rate,
+        low: rate,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return rates.length > 0 ? rates : null;
+  } catch (error) {
+    console.error("Frankfurter API 오류:", error);
     return null;
   }
 }
@@ -289,21 +349,30 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
     return rateCache.data;
   }
 
-  // 1차: 한국수출입은행 API
+  // 1차: 한국수출입은행 API (공식 매매기준율)
   let rates = await fetchFromKoreaExim();
 
-  // 2차: ExchangeRate-API (백업)
+  // 2차: ExchangeRate-API (무료 백업)
   if (!rates) {
+    console.log("환율 fallback: ExchangeRate-API 시도");
     rates = await fetchFromExchangeRateAPI();
   }
 
-  // 3차: DB에서 최신 데이터
+  // 3차: Frankfurter API (무료, ECB 기반)
   if (!rates) {
+    console.log("환율 fallback: Frankfurter API 시도");
+    rates = await fetchFromFrankfurter();
+  }
+
+  // 4차: DB에서 최신 데이터
+  if (!rates) {
+    console.log("환율 fallback: DB 캐시 조회");
     rates = await getLatestRatesFromDB();
   }
 
-  // 4차: 기본값
+  // 5차: 기본값
   if (!rates || rates.length === 0) {
+    console.log("환율 fallback: 기본값 사용");
     rates = getDefaultRates();
   }
 
@@ -320,58 +389,65 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
 }
 
 /**
- * 7일간 고가/저가 추가
+ * 실시간 환율 조회 (캐시 무시, 거래용)
+ * 거래 페이지에서 정확한 환율이 필요할 때 사용
+ */
+export async function getRealtimeRates(): Promise<ExchangeRateData[]> {
+  // 캐시 무시하고 직접 API 호출
+  let rates = await fetchFromKoreaExim();
+
+  if (!rates) {
+    rates = await fetchFromExchangeRateAPI();
+  }
+
+  if (!rates) {
+    rates = await fetchFromFrankfurter();
+  }
+
+  if (!rates) {
+    rates = await getLatestRatesFromDB();
+  }
+
+  if (!rates || rates.length === 0) {
+    rates = getDefaultRates();
+  }
+
+  // 캐시도 업데이트 (다른 요청에 도움)
+  rateCache = { data: rates, timestamp: Date.now() };
+
+  return rates;
+}
+
+/**
+ * 7일간 고가/저가 추가 (DB 캐시 기반 - API 호출 없음)
  */
 async function addHighLowFromHistory(rates: ExchangeRateData[]): Promise<ExchangeRateData[]> {
-  const apiKey = process.env.KOREA_EXIM_API_KEY;
-  if (!apiKey) return rates;
-
   try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const dbRates = await prisma.exchangeRate.findMany({
+      where: {
+        timestamp: { gte: sevenDaysAgo },
+      },
+      select: {
+        currency: true,
+        rate: true,
+      },
+    });
+
     const highLowMap: Record<string, { high: number; low: number }> = {};
 
-    // 최근 7일 데이터 조회
-    const today = new Date();
-    for (let i = 0; i < 7; i++) {
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() - i);
-
-      const day = targetDate.getDay();
-      if (day === 0 || day === 6) continue; // 주말 건너뛰기
-
-      const dateStr = targetDate.toISOString().split("T")[0].replace(/-/g, "");
-
-      try {
-        const url = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${apiKey}&searchdate=${dateStr}&data=AP01`;
-        const response = await fetch(url, {
-          headers: { "Content-Type": "application/json" },
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (Array.isArray(data)) {
-            for (const item of data) {
-              const currencyMatch = item.cur_unit?.match(/^([A-Z]{3})/);
-              const currency = currencyMatch ? currencyMatch[1] : item.cur_unit;
-              if (!SUPPORTED_CURRENCIES.includes(currency)) continue;
-
-              const rate = parseFloat(item.deal_bas_r?.replace(/,/g, "") || "0");
-              const normalizedRate = currency === "JPY" ? rate / 100 : rate;
-
-              if (!highLowMap[currency]) {
-                highLowMap[currency] = { high: normalizedRate, low: normalizedRate };
-              } else {
-                highLowMap[currency].high = Math.max(highLowMap[currency].high, normalizedRate);
-                highLowMap[currency].low = Math.min(highLowMap[currency].low, normalizedRate);
-              }
-            }
-          }
-        }
-      } catch {
-        // 개별 날짜 실패는 무시
+    for (const r of dbRates) {
+      const rate = Number(r.rate);
+      if (!highLowMap[r.currency]) {
+        highLowMap[r.currency] = { high: rate, low: rate };
+      } else {
+        highLowMap[r.currency].high = Math.max(highLowMap[r.currency].high, rate);
+        highLowMap[r.currency].low = Math.min(highLowMap[r.currency].low, rate);
       }
     }
 
-    // rates에 고가/저가 적용
     return rates.map((r) => ({
       ...r,
       high: highLowMap[r.currency]?.high || r.rate,
@@ -432,75 +508,123 @@ function getDefaultRates(): ExchangeRateData[] {
   ];
 }
 
+// 히스토리 캐시 (기간별, 10분)
+const historyCache = new Map<string, { data: { date: string; rate: number }[]; timestamp: number }>();
+const HISTORY_CACHE_DURATION = 10 * 60 * 1000; // 10분
+
 /**
- * 환율 히스토리 조회 (한국수출입은행 API + DB)
+ * Frankfurter API에서 환율 히스토리 조회 (단일 호출로 전체 기간)
+ * https://frankfurter.app/
+ * 무료, API 키 불필요, 날짜 범위 지원
+ */
+async function fetchHistoryFromFrankfurter(
+  currency: string,
+  days: number
+): Promise<{ date: string; rate: number }[] | null> {
+  try {
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+
+    const startStr = startDate.toISOString().split("T")[0];
+    const endStr = endDate.toISOString().split("T")[0];
+
+    // Frankfurter는 KRW를 직접 지원
+    // USD/KRW 조회: from=USD&to=KRW
+    // EUR/KRW 조회: from=EUR&to=KRW
+    const url = `https://api.frankfurter.app/${startStr}..${endStr}?from=${currency}&to=KRW`;
+
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!response.ok) {
+      console.error(`Frankfurter API 오류: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!data.rates || typeof data.rates !== "object") {
+      return null;
+    }
+
+    const results: { date: string; rate: number }[] = [];
+    for (const [date, rates] of Object.entries(data.rates)) {
+      const rateValue = (rates as Record<string, number>).KRW;
+      if (rateValue) {
+        // JPY는 Frankfurter가 1 JPY = X KRW로 제공하므로 변환 불필요
+        results.push({ date, rate: Math.round(rateValue * 100) / 100 });
+      }
+    }
+
+    return results.sort((a, b) => a.date.localeCompare(b.date));
+  } catch (error) {
+    console.error("Frankfurter API 히스토리 오류:", error);
+    return null;
+  }
+}
+
+/**
+ * ExchangeRate-API에서 히스토리 조회 (1건씩이지만 최근 며칠만 fallback)
+ */
+async function fetchHistoryFromExchangeRateAPI(
+  currency: string,
+  days: number
+): Promise<{ date: string; rate: number }[] | null> {
+  try {
+    // 무료 API는 현재 환율만 제공하므로 현재값 1건 반환
+    const response = await fetch("https://open.er-api.com/v6/latest/USD", {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return null;
+
+    const data = await response.json();
+    if (data.result !== "success") return null;
+
+    const krwRate = data.rates.KRW;
+    let rate: number;
+
+    if (currency === "USD") {
+      rate = krwRate;
+    } else {
+      const currencyToUsd = data.rates[currency];
+      rate = krwRate / currencyToUsd;
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    return [{ date: today, rate: Math.round(rate * 100) / 100 }];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 환율 히스토리 조회 (Frankfurter API + DB 보완)
+ * 기존 한국수출입은행 per-day 호출 방식 대비 API 사용량 대폭 감소
  */
 export async function getExchangeRateHistory(
   currency: string,
   days: number = 30
 ): Promise<{ date: string; rate: number }[]> {
-  const apiKey = process.env.KOREA_EXIM_API_KEY;
+  // 캐시 확인
+  const cacheKey = `${currency}_${days}`;
+  const cached = historyCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < HISTORY_CACHE_DURATION) {
+    return cached.data;
+  }
+
   const dailyRates = new Map<string, number>();
 
-  // 1. 한국수출입은행 API에서 과거 데이터 조회
-  if (apiKey) {
-    const today = new Date();
-    const fetchPromises: Promise<void>[] = [];
-
-    for (let i = 0; i < days; i++) {
-      const targetDate = new Date(today);
-      targetDate.setDate(today.getDate() - i);
-
-      // 주말 건너뛰기
-      const day = targetDate.getDay();
-      if (day === 0 || day === 6) continue;
-
-      const dateStr = targetDate.toISOString().split("T")[0].replace(/-/g, "");
-      const dateKey = targetDate.toISOString().split("T")[0];
-
-      const fetchPromise = (async () => {
-        try {
-          const url = `https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON?authkey=${apiKey}&searchdate=${dateStr}&data=AP01`;
-          const response = await fetch(url, {
-            headers: { "Content-Type": "application/json" },
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            if (Array.isArray(data)) {
-              for (const item of data) {
-                const currencyMatch = item.cur_unit?.match(/^([A-Z]{3})/);
-                const curr = currencyMatch ? currencyMatch[1] : item.cur_unit;
-                if (curr === currency) {
-                  const rate = parseFloat(item.deal_bas_r?.replace(/,/g, "") || "0");
-                  const normalizedRate = currency === "JPY" ? rate / 100 : rate;
-                  dailyRates.set(dateKey, normalizedRate);
-                  break;
-                }
-              }
-            }
-          }
-        } catch {
-          // 개별 날짜 실패는 무시
-        }
-      })();
-
-      fetchPromises.push(fetchPromise);
-
-      // API 과부하 방지: 5개씩 병렬 처리
-      if (fetchPromises.length >= 5) {
-        await Promise.all(fetchPromises);
-        fetchPromises.length = 0;
-      }
-    }
-
-    // 남은 요청 처리
-    if (fetchPromises.length > 0) {
-      await Promise.all(fetchPromises);
+  // 1차: Frankfurter API (단일 호출로 전체 기간 조회)
+  const frankfurterData = await fetchHistoryFromFrankfurter(currency, days);
+  if (frankfurterData && frankfurterData.length > 0) {
+    for (const item of frankfurterData) {
+      dailyRates.set(item.date, item.rate);
     }
   }
 
-  // 2. DB에서 추가 데이터 보완
+  // 2차: DB에서 추가 데이터 보완
   try {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -527,8 +651,22 @@ export async function getExchangeRateHistory(
     // DB 오류 무시
   }
 
-  // 날짜순 정렬
-  return Array.from(dailyRates.entries())
+  // 3차: 데이터가 없으면 ExchangeRate-API fallback
+  if (dailyRates.size === 0) {
+    const fallbackData = await fetchHistoryFromExchangeRateAPI(currency, days);
+    if (fallbackData) {
+      for (const item of fallbackData) {
+        dailyRates.set(item.date, item.rate);
+      }
+    }
+  }
+
+  const result = Array.from(dailyRates.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([date, rate]) => ({ date, rate }));
+
+  // 캐시 저장
+  historyCache.set(cacheKey, { data: result, timestamp: Date.now() });
+
+  return result;
 }
