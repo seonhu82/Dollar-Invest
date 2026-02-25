@@ -412,8 +412,14 @@ export async function getRealtimeRates(): Promise<ExchangeRateData[]> {
     rates = getDefaultRates();
   }
 
+  // 7일간 고가/저가 추가
+  rates = await addHighLowFromHistory(rates);
+
   // 캐시도 업데이트 (다른 요청에 도움)
   rateCache = { data: rates, timestamp: Date.now() };
+
+  // DB 저장 (비동기)
+  saveRatesToDB(rates).catch(console.error);
 
   return rates;
 }
