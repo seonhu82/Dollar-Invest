@@ -49,7 +49,7 @@ async function fetchFromKoreaExim(): Promise<ExchangeRateData[] | null> {
     const response = await fetch(url, {
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(10000),
-      next: { revalidate: 300 }, // 5분 캐시
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -122,7 +122,7 @@ async function fetchFromExchangeRateAPI(): Promise<ExchangeRateData[] | null> {
     // 무료 API (API 키 불필요)
     const response = await fetch(
       "https://open.er-api.com/v6/latest/USD",
-      { signal: AbortSignal.timeout(10000), next: { revalidate: 300 } }
+      { signal: AbortSignal.timeout(10000), cache: "no-store" }
     );
 
     if (!response.ok) {
@@ -419,10 +419,13 @@ export async function getRealtimeRates(): Promise<ExchangeRateData[]> {
 }
 
 /**
- * 7일간 고가/저가 추가 (DB 캐시 기반 - API 호출 없음)
+ * 7일간 고가/저가 추가 (DB + Frankfurter API 폴백)
  */
 async function addHighLowFromHistory(rates: ExchangeRateData[]): Promise<ExchangeRateData[]> {
   try {
+    const highLowMap: Record<string, { high: number; low: number }> = {};
+
+    // 1차: DB에서 7일간 데이터 조회
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -436,8 +439,6 @@ async function addHighLowFromHistory(rates: ExchangeRateData[]): Promise<Exchang
       },
     });
 
-    const highLowMap: Record<string, { high: number; low: number }> = {};
-
     for (const r of dbRates) {
       const rate = Number(r.rate);
       if (!highLowMap[r.currency]) {
@@ -448,10 +449,32 @@ async function addHighLowFromHistory(rates: ExchangeRateData[]): Promise<Exchang
       }
     }
 
+    // 2차: DB에 데이터 없는 통화는 Frankfurter API로 보완
+    const missingCurrencies = rates
+      .map((r) => r.currency)
+      .filter((c) => !highLowMap[c] || (highLowMap[c].high === highLowMap[c].low));
+
+    if (missingCurrencies.length > 0) {
+      for (const currency of missingCurrencies) {
+        try {
+          const history = await fetchHistoryFromFrankfurter(currency, 7);
+          if (history && history.length > 1) {
+            const histRates = history.map((h) => h.rate);
+            highLowMap[currency] = {
+              high: Math.max(...histRates),
+              low: Math.min(...histRates),
+            };
+          }
+        } catch {
+          // 개별 통화 실패 무시
+        }
+      }
+    }
+
     return rates.map((r) => ({
       ...r,
-      high: highLowMap[r.currency]?.high || r.rate,
-      low: highLowMap[r.currency]?.low || r.rate,
+      high: highLowMap[r.currency]?.high ?? r.rate,
+      low: highLowMap[r.currency]?.low ?? r.rate,
     }));
   } catch {
     return rates;
@@ -535,7 +558,8 @@ async function fetchHistoryFromFrankfurter(
     const url = `https://api.frankfurter.app/${startStr}..${endStr}?from=${currency}&to=KRW`;
 
     const response = await fetch(url, {
-      signal: AbortSignal.timeout(25000), // 1년 데이터 조회 시 충분한 시간
+      signal: AbortSignal.timeout(25000),
+      cache: "no-store",
     });
 
     if (!response.ok) {

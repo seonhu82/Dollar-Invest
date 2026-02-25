@@ -185,7 +185,7 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
   }, [selectedPeriod]);
 
   return (
-    <Card className={className}>
+    <Card className={`overflow-hidden ${className || ""}`}>
       <CardHeader className="pb-3">
         {/* 타이틀 + 기간 버튼: 모바일에서 세로 정렬 */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
