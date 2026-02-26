@@ -17,6 +17,7 @@ import {
   Check,
   X,
   Loader2,
+  FileSpreadsheet,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -187,6 +188,12 @@ function TradeContent() {
           <p className="text-muted-foreground">외화 매수/매도 및 거래 내역</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" asChild>
+            <Link href="/trade/import">
+              <FileSpreadsheet className="h-4 w-4 mr-2" />
+              일괄 등록
+            </Link>
+          </Button>
           <Button variant="buy" asChild>
             <Link href="/trade/buy">
               <ArrowDownCircle className="h-4 w-4 mr-2" />
