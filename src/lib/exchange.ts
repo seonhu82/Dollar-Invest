@@ -2,9 +2,10 @@
  * 환율 API 서비스
  *
  * 데이터 소스:
- * 1. 한국수출입은행 Open API (primary) - 공식 환율
- * 2. ExchangeRate-API (fallback) - 무료 백업
- * 3. Frankfurter API (히스토리) - 무료, 키 불필요, 날짜 범위 지원
+ * 1. Twelve Data API (primary) - 실시간 외환시장 환율
+ * 2. 한국수출입은행 Open API (fallback) - 공식 매매기준율 (하루 1회 공시)
+ * 3. ExchangeRate-API (fallback) - 무료 백업
+ * 4. Frankfurter API (히스토리) - 무료, 키 불필요, 날짜 범위 지원
  */
 
 import { prisma } from "./prisma";
@@ -20,15 +21,102 @@ export interface ExchangeRateData {
   timestamp: string;
 }
 
-// 메모리 캐시 (5분)
+// 메모리 캐시 (1분 - 실시간 환율 반영)
 let rateCache: { data: ExchangeRateData[]; timestamp: number } | null = null;
-const CACHE_DURATION = 5 * 60 * 1000; // 5분
+const CACHE_DURATION = 1 * 60 * 1000; // 1분
 
 // 지원 통화
 const SUPPORTED_CURRENCIES = ["USD", "EUR", "JPY", "CNY", "GBP"];
 
 /**
- * 한국수출입은행 API에서 환율 조회
+ * Twelve Data API에서 실시간 외환시장 환율 조회
+ * https://twelvedata.com/docs#exchange-rate
+ * 무료: 800 API 크레딧/일, 8 크레딧/분
+ */
+async function fetchFromTwelveData(): Promise<ExchangeRateData[] | null> {
+  const apiKey = process.env.TWELVE_DATA_API_KEY;
+
+  if (!apiKey) {
+    console.log("Twelve Data API 키가 설정되지 않았습니다.");
+    return null;
+  }
+
+  try {
+    // 모든 통화쌍을 한 번에 조회
+    const symbols = SUPPORTED_CURRENCIES.map((c) => `${c}/KRW`).join(",");
+    const url = `https://api.twelvedata.com/exchange_rate?symbol=${symbols}&apikey=${apiKey}`;
+
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(10000),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      console.error(`Twelve Data API HTTP ${response.status}: ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    // 에러 응답 처리
+    if (data.code && data.status === "error") {
+      console.error("Twelve Data API 오류:", data.message);
+      return null;
+    }
+
+    const yesterdayRates = await getYesterdayRates();
+    const rates: ExchangeRateData[] = [];
+
+    // 단일 심볼이면 객체, 다중 심볼이면 키별 객체
+    const entries = SUPPORTED_CURRENCIES.length === 1
+      ? [[`${SUPPORTED_CURRENCIES[0]}/KRW`, data]]
+      : Object.entries(data);
+
+    for (const [symbol, info] of entries) {
+      const symbolData = info as { symbol?: string; rate?: number; timestamp?: number; code?: number };
+
+      // 개별 심볼 에러 스킵
+      if (symbolData.code && symbolData.code !== 200) continue;
+
+      const currency = (symbol as string).split("/")[0];
+      if (!SUPPORTED_CURRENCIES.includes(currency)) continue;
+
+      const rate = typeof symbolData.rate === "string"
+        ? parseFloat(symbolData.rate)
+        : symbolData.rate;
+
+      if (!rate || isNaN(rate)) continue;
+
+      const normalizedRate = Math.round(rate * 100) / 100;
+      const yesterdayRate = yesterdayRates[currency] || normalizedRate;
+      const change = normalizedRate - yesterdayRate;
+      const changePercent = yesterdayRate > 0 ? (change / yesterdayRate) * 100 : 0;
+
+      rates.push({
+        currency,
+        currencyName: "KRW",
+        rate: normalizedRate,
+        change: Math.round(change * 100) / 100,
+        changePercent: Math.round(changePercent * 100) / 100,
+        high: normalizedRate,
+        low: normalizedRate,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (rates.length > 0) {
+      console.log(`Twelve Data: 실시간 환율 ${rates.length}개 통화 조회 성공`);
+    }
+
+    return rates.length > 0 ? rates : null;
+  } catch (error) {
+    console.error("Twelve Data API 오류:", error);
+    return null;
+  }
+}
+
+/**
+ * 한국수출입은행 API에서 환율 조회 (하루 1회 공시 매매기준율)
  * https://www.koreaexim.go.kr/ir/HPHKIR020M01?apino=2&viewtype=C
  */
 async function fetchFromKoreaExim(): Promise<ExchangeRateData[] | null> {
@@ -349,28 +437,34 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
     return rateCache.data;
   }
 
-  // 1차: 한국수출입은행 API (공식 매매기준율)
-  let rates = await fetchFromKoreaExim();
+  // 1차: Twelve Data API (실시간 외환시장 환율)
+  let rates = await fetchFromTwelveData();
 
-  // 2차: ExchangeRate-API (무료 백업)
+  // 2차: 한국수출입은행 API (공식 매매기준율, 하루 1회)
+  if (!rates) {
+    console.log("환율 fallback: 한국수출입은행 시도");
+    rates = await fetchFromKoreaExim();
+  }
+
+  // 3차: ExchangeRate-API (무료 백업)
   if (!rates) {
     console.log("환율 fallback: ExchangeRate-API 시도");
     rates = await fetchFromExchangeRateAPI();
   }
 
-  // 3차: Frankfurter API (무료, ECB 기반)
+  // 4차: Frankfurter API (무료, ECB 기반)
   if (!rates) {
     console.log("환율 fallback: Frankfurter API 시도");
     rates = await fetchFromFrankfurter();
   }
 
-  // 4차: DB에서 최신 데이터
+  // 5차: DB에서 최신 데이터
   if (!rates) {
     console.log("환율 fallback: DB 캐시 조회");
     rates = await getLatestRatesFromDB();
   }
 
-  // 5차: 기본값
+  // 6차: 기본값
   if (!rates || rates.length === 0) {
     console.log("환율 fallback: 기본값 사용");
     rates = getDefaultRates();
@@ -393,8 +487,12 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
  * 거래 페이지에서 정확한 환율이 필요할 때 사용
  */
 export async function getRealtimeRates(): Promise<ExchangeRateData[]> {
-  // 캐시 무시하고 직접 API 호출
-  let rates = await fetchFromKoreaExim();
+  // 캐시 무시하고 직접 API 호출 (실시간 우선)
+  let rates = await fetchFromTwelveData();
+
+  if (!rates) {
+    rates = await fetchFromKoreaExim();
+  }
 
   if (!rates) {
     rates = await fetchFromExchangeRateAPI();
