@@ -5,7 +5,7 @@ export type BrokerType = "HANA" | "KIS" | "MANUAL";
 export type TransactionType = "BUY" | "SELL";
 
 // 통화 타입
-export type CurrencyType = "USD" | "EUR" | "JPY" | "CNY";
+export type CurrencyType = "USD" | "EUR" | "JPY" | "CNY" | "GBP";
 
 // 알림 타입
 export type AlertType = "TARGET_RATE" | "CHANGE_RATE" | "DAILY";

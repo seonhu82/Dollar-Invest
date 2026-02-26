@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
 import { formatRate, formatKRW } from "@/lib/utils";
-import { RefreshCw, Calculator, ArrowRightLeft } from "lucide-react";
+import { RefreshCw, Calculator, ArrowUpDown } from "lucide-react";
 
 interface ExchangeRate {
   currency: string;
@@ -19,6 +19,15 @@ interface ExchangeRate {
   low: number;
   timestamp: string;
 }
+
+const CURRENCY_INFO: Record<string, { name: string; flag: string }> = {
+  USD: { name: "미국 달러", flag: "\u{1F1FA}\u{1F1F8}" },
+  EUR: { name: "유로", flag: "\u{1F1EA}\u{1F1FA}" },
+  JPY: { name: "일본 엔", flag: "\u{1F1EF}\u{1F1F5}" },
+  CNY: { name: "중국 위안", flag: "\u{1F1E8}\u{1F1F3}" },
+  GBP: { name: "영국 파운드", flag: "\u{1F1EC}\u{1F1E7}" },
+  KRW: { name: "한국 원", flag: "\u{1F1F0}\u{1F1F7}" },
+};
 
 export default function ExchangePage() {
   const [rates, setRates] = useState<ExchangeRate[]>([]);
@@ -55,11 +64,38 @@ export default function ExchangePage() {
 
   // 환율 계산
   const selectedRate = rates.find((r) => r.currency === calcCurrency)?.rate || 0;
+  const inputAmount = parseFloat(calcAmount) || 0;
   const calculatedAmount = calcAmount
     ? calcDirection === "toKRW"
-      ? parseFloat(calcAmount) * selectedRate
-      : parseFloat(calcAmount) / selectedRate
+      ? inputAmount * selectedRate
+      : inputAmount / selectedRate
     : 0;
+
+  // FROM/TO 통화 결정
+  const fromCurrency = calcDirection === "toKRW" ? calcCurrency : "KRW";
+  const toCurrency = calcDirection === "toKRW" ? "KRW" : calcCurrency;
+  const fromInfo = CURRENCY_INFO[fromCurrency] || { name: fromCurrency, flag: "" };
+  const toInfo = CURRENCY_INFO[toCurrency] || { name: toCurrency, flag: "" };
+
+  // 스왑: 방향 전환 + 결과값을 입력값으로 이동
+  const handleSwap = () => {
+    if (calculatedAmount > 0) {
+      const newAmount =
+        calcDirection === "toKRW"
+          ? Math.round(calculatedAmount).toString()
+          : calculatedAmount.toFixed(2);
+      setCalcAmount(newAmount);
+    }
+    setCalcDirection((d) => (d === "toKRW" ? "fromKRW" : "toKRW"));
+  };
+
+  // 결과 포맷팅
+  const formattedResult =
+    calcAmount && calculatedAmount > 0
+      ? calcDirection === "toKRW"
+        ? formatKRW(calculatedAmount)
+        : calculatedAmount.toFixed(2)
+      : "0";
 
   return (
     <div className="min-h-screen bg-background">
@@ -110,64 +146,105 @@ export default function ExchangePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col md:flex-row items-center gap-4">
-              {/* 입력 */}
-              <div className="flex-1 w-full">
-                <label className="text-sm text-muted-foreground mb-2 block">
-                  {calcDirection === "toKRW" ? "외화 금액" : "원화 금액"}
-                </label>
-                <div className="flex gap-2">
+            <div className="flex flex-col gap-3">
+              {/* FROM - 변환할 금액 */}
+              <div className="p-4 border rounded-xl bg-background space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    변환할 화폐
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {fromInfo.flag} {fromCurrency}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
                   <Input
                     type="number"
                     placeholder="금액 입력"
                     value={calcAmount}
                     onChange={(e) => setCalcAmount(e.target.value)}
-                    className="text-lg"
+                    className="text-2xl font-semibold border-0 p-0 h-auto focus-visible:ring-0 bg-transparent flex-1"
                   />
-                  <select
-                    value={calcCurrency}
-                    onChange={(e) => setCalcCurrency(e.target.value)}
-                    className="px-3 py-2 border rounded-md bg-background"
-                  >
-                    {rates.map((rate) => (
-                      <option key={rate.currency} value={rate.currency}>
-                        {rate.currency}
-                      </option>
-                    ))}
-                  </select>
+                  {calcDirection === "toKRW" ? (
+                    <select
+                      value={calcCurrency}
+                      onChange={(e) => setCalcCurrency(e.target.value)}
+                      className="px-3 py-2 border rounded-lg bg-secondary text-sm font-medium min-w-[140px]"
+                    >
+                      {rates.map((rate) => {
+                        const info = CURRENCY_INFO[rate.currency];
+                        return (
+                          <option key={rate.currency} value={rate.currency}>
+                            {info?.flag} {rate.currency} - {info?.name}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <div className="px-3 py-2 bg-secondary rounded-lg text-sm font-medium min-w-[140px]">
+                      {CURRENCY_INFO.KRW.flag} KRW - {CURRENCY_INFO.KRW.name}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* 방향 전환 버튼 */}
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setCalcDirection((d) => (d === "toKRW" ? "fromKRW" : "toKRW"))
-                }
-                className="shrink-0"
-              >
-                <ArrowRightLeft className="h-4 w-4" />
-              </Button>
+              {/* 스왑 버튼 */}
+              <div className="flex justify-center -my-1 relative z-10">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleSwap}
+                  className="rounded-full h-10 w-10 border-2 bg-background hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all shadow-sm"
+                  title="통화 교환"
+                >
+                  <ArrowUpDown className="h-4 w-4" />
+                </Button>
+              </div>
 
-              {/* 결과 */}
-              <div className="flex-1 w-full">
-                <label className="text-sm text-muted-foreground mb-2 block">
-                  {calcDirection === "toKRW" ? "원화 금액" : "외화 금액"}
-                </label>
-                <div className="px-4 py-3 bg-secondary rounded-md">
-                  <span className="text-2xl font-bold tabular-nums">
-                    {calcDirection === "toKRW"
-                      ? formatKRW(calculatedAmount)
-                      : `${calculatedAmount.toFixed(2)} ${calcCurrency}`}
+              {/* TO - 변환 결과 */}
+              <div className="p-4 border rounded-xl bg-secondary/30 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    변환될 화폐
                   </span>
+                  <span className="text-xs text-muted-foreground">
+                    {toInfo.flag} {toCurrency}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl font-bold tabular-nums flex-1 min-h-[36px]">
+                    {formattedResult}
+                  </div>
+                  {calcDirection === "fromKRW" ? (
+                    <select
+                      value={calcCurrency}
+                      onChange={(e) => setCalcCurrency(e.target.value)}
+                      className="px-3 py-2 border rounded-lg bg-secondary text-sm font-medium min-w-[140px]"
+                    >
+                      {rates.map((rate) => {
+                        const info = CURRENCY_INFO[rate.currency];
+                        return (
+                          <option key={rate.currency} value={rate.currency}>
+                            {info?.flag} {rate.currency} - {info?.name}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  ) : (
+                    <div className="px-3 py-2 bg-secondary rounded-lg text-sm font-medium min-w-[140px]">
+                      {CURRENCY_INFO.KRW.flag} KRW - {CURRENCY_INFO.KRW.name}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* 적용 환율 표시 */}
-            <div className="mt-4 text-sm text-muted-foreground text-center">
-              적용 환율: 1 {calcCurrency} = {formatRate(selectedRate)} KRW
+            <div className="mt-4 pt-4 border-t flex items-center justify-center gap-2 text-sm text-muted-foreground">
+              <span>적용 환율:</span>
+              <span className="font-medium text-foreground">
+                1 {calcCurrency} = {formatRate(selectedRate)} KRW
+              </span>
             </div>
           </CardContent>
         </Card>
