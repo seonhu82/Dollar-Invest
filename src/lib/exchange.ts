@@ -440,6 +440,22 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
   // 1차: Twelve Data API (실시간 외환시장 환율)
   let rates = await fetchFromTwelveData();
 
+  // Twelve Data에서 일부 통화 누락 시 다른 소스로 보완
+  const missingCurrencies = rates
+    ? SUPPORTED_CURRENCIES.filter((c) => !rates!.find((r) => r.currency === c))
+    : null;
+
+  if (rates && missingCurrencies && missingCurrencies.length > 0) {
+    console.log(`Twelve Data 누락 통화 보완: ${missingCurrencies.join(", ")}`);
+    const supplement = await fetchFromKoreaExim() || await fetchFromExchangeRateAPI() || await fetchFromFrankfurter();
+    if (supplement) {
+      for (const currency of missingCurrencies) {
+        const found = supplement.find((r) => r.currency === currency);
+        if (found) rates.push(found);
+      }
+    }
+  }
+
   // 2차: 한국수출입은행 API (공식 매매기준율, 하루 1회)
   if (!rates) {
     console.log("환율 fallback: 한국수출입은행 시도");
@@ -489,6 +505,21 @@ export async function getExchangeRates(): Promise<ExchangeRateData[]> {
 export async function getRealtimeRates(): Promise<ExchangeRateData[]> {
   // 캐시 무시하고 직접 API 호출 (실시간 우선)
   let rates = await fetchFromTwelveData();
+
+  // 누락 통화 보완
+  const missingCurrencies = rates
+    ? SUPPORTED_CURRENCIES.filter((c) => !rates!.find((r) => r.currency === c))
+    : null;
+
+  if (rates && missingCurrencies && missingCurrencies.length > 0) {
+    const supplement = await fetchFromKoreaExim() || await fetchFromExchangeRateAPI() || await fetchFromFrankfurter();
+    if (supplement) {
+      for (const currency of missingCurrencies) {
+        const found = supplement.find((r) => r.currency === currency);
+        if (found) rates.push(found);
+      }
+    }
+  }
 
   if (!rates) {
     rates = await fetchFromKoreaExim();
