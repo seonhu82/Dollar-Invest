@@ -34,6 +34,7 @@ interface ParsedRow {
   fee: number;
   memo: string;
   krwAmount: number;
+  entryRate: number | null;
   error?: string;
 }
 
@@ -130,11 +131,12 @@ export default function ImportPage() {
         const rawRate = row["환율"];
         const rawFee = row["수수료"];
         const rawMemo = row["메모"];
+        const rawEntryRate = row["진입가"];
 
         // 거래일자
         let tradedAt = "";
         if (!rawDate) {
-          parsed.push({ rowNum, tradedAt: "", type: "", amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, error: "거래일자가 없습니다" });
+          parsed.push({ rowNum, tradedAt: "", type: "", amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, entryRate: null, error: "거래일자가 없습니다" });
           continue;
         }
         if (typeof rawDate === "number") {
@@ -145,7 +147,7 @@ export default function ImportPage() {
           tradedAt = String(rawDate).trim();
         }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(tradedAt) || isNaN(new Date(tradedAt).getTime())) {
-          parsed.push({ rowNum, tradedAt, type: "", amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, error: "날짜 형식 오류 (YYYY-MM-DD)" });
+          parsed.push({ rowNum, tradedAt, type: "", amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, entryRate: null, error: "날짜 형식 오류 (YYYY-MM-DD)" });
           continue;
         }
 
@@ -157,35 +159,44 @@ export default function ImportPage() {
         } else if (typeStr === "매도" || typeStr.toUpperCase() === "SELL") {
           type = "매도";
         } else {
-          parsed.push({ rowNum, tradedAt, type: typeStr, amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, error: "'매수' 또는 '매도'를 입력해주세요" });
+          parsed.push({ rowNum, tradedAt, type: typeStr, amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, entryRate: null, error: "'매수' 또는 '매도'를 입력해주세요" });
           continue;
         }
 
         // 금액
         const amount = Number(rawAmount);
         if (!amount || amount <= 0) {
-          parsed.push({ rowNum, tradedAt, type, amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, error: "금액은 0보다 큰 숫자여야 합니다" });
+          parsed.push({ rowNum, tradedAt, type, amount: 0, rate: 0, fee: 0, memo: "", krwAmount: 0, entryRate: null, error: "금액은 0보다 큰 숫자여야 합니다" });
           continue;
         }
 
         // 환율
         const rate = Number(rawRate);
         if (!rate || rate <= 0) {
-          parsed.push({ rowNum, tradedAt, type, amount, rate: 0, fee: 0, memo: "", krwAmount: 0, error: "환율은 0보다 큰 숫자여야 합니다" });
+          parsed.push({ rowNum, tradedAt, type, amount, rate: 0, fee: 0, memo: "", krwAmount: 0, entryRate: null, error: "환율은 0보다 큰 숫자여야 합니다" });
           continue;
         }
 
         // 수수료
         const fee = Number(rawFee) || 0;
         if (fee < 0) {
-          parsed.push({ rowNum, tradedAt, type, amount, rate, fee: 0, memo: "", krwAmount: 0, error: "수수료는 0 이상이어야 합니다" });
+          parsed.push({ rowNum, tradedAt, type, amount, rate, fee: 0, memo: "", krwAmount: 0, entryRate: null, error: "수수료는 0 이상이어야 합니다" });
           continue;
         }
 
         const memo = rawMemo ? String(rawMemo).trim().slice(0, 200) : "";
         const krwAmount = amount * rate + fee;
 
-        parsed.push({ rowNum, tradedAt, type, amount, rate, fee, memo, krwAmount });
+        // 진입가 파싱 (매도 행에만 적용)
+        let entryRate: number | null = null;
+        if (type === "매도" && rawEntryRate) {
+          const parsedEntryRate = Number(rawEntryRate);
+          if (parsedEntryRate > 0) {
+            entryRate = parsedEntryRate;
+          }
+        }
+
+        parsed.push({ rowNum, tradedAt, type, amount, rate, fee, memo, krwAmount, entryRate });
       }
 
       setParsedRows(parsed);
@@ -437,6 +448,7 @@ export default function ImportPage() {
                       <th className="pb-2 pr-3 font-medium text-gray-500 text-right">환율</th>
                       <th className="pb-2 pr-3 font-medium text-gray-500 text-right">수수료</th>
                       <th className="pb-2 pr-3 font-medium text-gray-500 text-right">원화금액</th>
+                      <th className="pb-2 pr-3 font-medium text-gray-500 text-right">진입가</th>
                       <th className="pb-2 font-medium text-gray-500">메모</th>
                     </tr>
                   </thead>
@@ -478,6 +490,9 @@ export default function ImportPage() {
                         </td>
                         <td className="py-2 pr-3 text-right">
                           {row.krwAmount > 0 ? formatKRW(row.krwAmount) : "-"}
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums">
+                          {row.type === "매도" && row.entryRate ? formatRate(row.entryRate) : "-"}
                         </td>
                         <td className="py-2 max-w-[120px] truncate">
                           {row.error ? (

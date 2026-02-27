@@ -11,6 +11,7 @@ interface ParsedRow {
   rate: number;
   fee: number;
   memo: string;
+  entryRate: number | null;
   error?: string;
 }
 
@@ -27,6 +28,7 @@ async function recalculatePortfolio(
   let balance = 0;
   let totalCost = 0;
   let totalInvested = 0;
+  let totalRealizedPnl = 0;
 
   for (const t of allTransactions) {
     const amount = Number(t.amount);
@@ -43,6 +45,9 @@ async function recalculatePortfolio(
       balance -= amount;
       totalInvested =
         balance > 0 ? totalInvested * (balance / (balance + amount)) : 0;
+      if (t.realizedPnl !== null) {
+        totalRealizedPnl += Number(t.realizedPnl);
+      }
     }
   }
 
@@ -54,6 +59,7 @@ async function recalculatePortfolio(
       currentBalance: balance,
       avgBuyRate,
       totalInvested,
+      totalRealizedPnl,
     },
   });
 }
@@ -141,11 +147,12 @@ export async function POST(request: Request) {
       const rawRate = row["환율"];
       const rawFee = row["수수료"];
       const rawMemo = row["메모"];
+      const rawEntryRate = row["진입가"];
 
       // 거래일자 파싱
       let tradedAt = "";
       if (!rawDate) {
-        parsed.push({ rowNum, tradedAt: "", type: "BUY", amount: 0, rate: 0, fee: 0, memo: "", error: "거래일자가 없습니다" });
+        parsed.push({ rowNum, tradedAt: "", type: "BUY", amount: 0, rate: 0, fee: 0, memo: "", entryRate: null, error: "거래일자가 없습니다" });
         continue;
       }
 
@@ -159,7 +166,7 @@ export async function POST(request: Request) {
 
       // 날짜 형식 검증
       if (!/^\d{4}-\d{2}-\d{2}$/.test(tradedAt) || isNaN(new Date(tradedAt).getTime())) {
-        parsed.push({ rowNum, tradedAt, type: "BUY", amount: 0, rate: 0, fee: 0, memo: "", error: "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)" });
+        parsed.push({ rowNum, tradedAt, type: "BUY", amount: 0, rate: 0, fee: 0, memo: "", entryRate: null, error: "날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)" });
         continue;
       }
 
@@ -171,35 +178,44 @@ export async function POST(request: Request) {
       } else if (typeStr === "매도" || typeStr.toUpperCase() === "SELL") {
         type = "SELL";
       } else {
-        parsed.push({ rowNum, tradedAt, type: "BUY", amount: 0, rate: 0, fee: 0, memo: "", error: "구분은 '매수' 또는 '매도'로 입력해주세요" });
+        parsed.push({ rowNum, tradedAt, type: "BUY", amount: 0, rate: 0, fee: 0, memo: "", entryRate: null, error: "구분은 '매수' 또는 '매도'로 입력해주세요" });
         continue;
       }
 
       // 금액 파싱
       const amount = Number(rawAmount);
       if (!amount || amount <= 0) {
-        parsed.push({ rowNum, tradedAt, type, amount: 0, rate: 0, fee: 0, memo: "", error: "금액은 0보다 큰 숫자여야 합니다" });
+        parsed.push({ rowNum, tradedAt, type, amount: 0, rate: 0, fee: 0, memo: "", entryRate: null, error: "금액은 0보다 큰 숫자여야 합니다" });
         continue;
       }
 
       // 환율 파싱
       const rate = Number(rawRate);
       if (!rate || rate <= 0) {
-        parsed.push({ rowNum, tradedAt, type, amount, rate: 0, fee: 0, memo: "", error: "환율은 0보다 큰 숫자여야 합니다" });
+        parsed.push({ rowNum, tradedAt, type, amount, rate: 0, fee: 0, memo: "", entryRate: null, error: "환율은 0보다 큰 숫자여야 합니다" });
         continue;
       }
 
       // 수수료 파싱
       const fee = Number(rawFee) || 0;
       if (fee < 0) {
-        parsed.push({ rowNum, tradedAt, type, amount, rate, fee: 0, memo: "", error: "수수료는 0 이상이어야 합니다" });
+        parsed.push({ rowNum, tradedAt, type, amount, rate, fee: 0, memo: "", entryRate: null, error: "수수료는 0 이상이어야 합니다" });
         continue;
       }
 
       // 메모
       const memo = rawMemo ? String(rawMemo).trim().slice(0, 200) : "";
 
-      parsed.push({ rowNum, tradedAt, type, amount, rate, fee, memo });
+      // 진입가 파싱 (매도 행에만 적용)
+      let entryRate: number | null = null;
+      if (type === "SELL" && rawEntryRate) {
+        const parsedEntryRate = Number(rawEntryRate);
+        if (parsedEntryRate > 0) {
+          entryRate = parsedEntryRate;
+        }
+      }
+
+      parsed.push({ rowNum, tradedAt, type, amount, rate, fee, memo, entryRate });
     }
 
     // 에러 있는 행 확인
@@ -221,6 +237,9 @@ export async function POST(request: Request) {
     await prisma.$transaction(async (tx) => {
       for (const item of valid) {
         const krwAmount = item.amount * item.rate + item.fee;
+        const realizedPnl = item.entryRate !== null
+          ? (item.rate - item.entryRate) * item.amount
+          : null;
 
         await tx.transaction.create({
           data: {
@@ -235,6 +254,8 @@ export async function POST(request: Request) {
             memo: item.memo || null,
             tradedAt: new Date(item.tradedAt),
             isManual: true,
+            entryRate: item.entryRate,
+            realizedPnl,
           },
         });
       }

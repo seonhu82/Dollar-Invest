@@ -59,6 +59,7 @@ export async function GET(
         currentBalance: Number(portfolio.currentBalance),
         avgBuyRate: Number(portfolio.avgBuyRate),
         totalInvested: Number(portfolio.totalInvested),
+        totalRealizedPnl: Number(portfolio.totalRealizedPnl),
         broker: portfolio.brokerAccount?.broker || "MANUAL",
         brokerAccountId: portfolio.brokerAccountId,
         accountAlias: portfolio.brokerAccount?.accountAlias,
@@ -72,6 +73,8 @@ export async function GET(
           krwAmount: Number(t.krwAmount),
           tradedAt: t.tradedAt,
           memo: t.memo,
+          entryRate: t.entryRate ? Number(t.entryRate) : null,
+          realizedPnl: t.realizedPnl ? Number(t.realizedPnl) : null,
         })),
       },
     });

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, formatKRW, formatPercent, formatRate } from "@/lib/utils";
+import { formatCurrency, formatKRW, formatPercent, formatRate, getDisplayRate, getRateUnit } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { Wallet, TrendingUp, TrendingDown } from "lucide-react";
 import Link from "next/link";
@@ -14,6 +14,7 @@ interface PortfolioCardProps {
   currentBalance: number;
   avgBuyRate: number;
   totalInvested: number;
+  totalRealizedPnl?: number;
   currentRate: number;
   broker: string;
 }
@@ -25,6 +26,7 @@ export function PortfolioCard({
   currentBalance,
   avgBuyRate,
   totalInvested,
+  totalRealizedPnl = 0,
   currentRate,
   broker,
 }: PortfolioCardProps) {
@@ -98,11 +100,11 @@ export function PortfolioCard({
         <div className="grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-xl text-xs">
           <div>
             <p className="text-muted-foreground">평균 매수가</p>
-            <p className="font-medium tabular-nums text-gray-900">{formatRate(avgBuyRate)}원</p>
+            <p className="font-medium tabular-nums text-gray-900">{formatRate(getDisplayRate(currency, avgBuyRate))}원/{getRateUnit(currency)}</p>
           </div>
           <div>
             <p className="text-muted-foreground">현재 환율</p>
-            <p className="font-medium tabular-nums text-gray-900">{formatRate(currentRate)}원</p>
+            <p className="font-medium tabular-nums text-gray-900">{formatRate(getDisplayRate(currency, currentRate))}원/{getRateUnit(currency)}</p>
           </div>
           <div>
             <p className="text-muted-foreground">투자 원금</p>
@@ -112,6 +114,17 @@ export function PortfolioCard({
             <p className="text-muted-foreground">평가 금액</p>
             <p className="font-medium tabular-nums text-gray-900">{formatKRW(currentValue)}</p>
           </div>
+          {totalRealizedPnl !== 0 && (
+            <div className="col-span-2">
+              <p className="text-muted-foreground">실현 손익</p>
+              <p className={cn(
+                "font-medium tabular-nums",
+                totalRealizedPnl >= 0 ? "text-emerald-600" : "text-red-600"
+              )}>
+                {totalRealizedPnl >= 0 ? "+" : ""}{formatKRW(totalRealizedPnl)}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* 액션 버튼 - 이것만 강조 */}

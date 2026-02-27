@@ -6,8 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatKRW, formatRate, formatCurrency } from "@/lib/utils";
-import { ArrowLeft, Info, AlertCircle, Check, RefreshCw } from "lucide-react";
+import { formatKRW, formatRate, formatCurrency, formatDateTime, getDisplayRate, getInternalRate, getRateUnit } from "@/lib/utils";
+import { ArrowLeft, AlertCircle, Check, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
 interface Portfolio {
@@ -21,6 +21,14 @@ interface Portfolio {
 interface ExchangeRate {
   currency: string;
   rate: number;
+}
+
+interface BuyTransaction {
+  id: string;
+  amount: number;
+  rate: number;
+  tradedAt: string;
+  memo: string | null;
 }
 
 const RATE_REFRESH_INTERVAL = 30 * 1000; // 30초
@@ -44,6 +52,13 @@ function SellForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  // 진입가 관련 상태
+  const [entryRateTab, setEntryRateTab] = useState<"none" | "select" | "manual">("none");
+  const [buyTransactions, setBuyTransactions] = useState<BuyTransaction[]>([]);
+  const [selectedBuyId, setSelectedBuyId] = useState<string | null>(null);
+  const [manualEntryRate, setManualEntryRate] = useState("");
+  const [loadingBuys, setLoadingBuys] = useState(false);
 
   // 실시간 환율 관련
   const [rateUpdatedAt, setRateUpdatedAt] = useState<Date | null>(null);
@@ -98,6 +113,47 @@ function SellForm() {
     fetchData();
   }, [preselectedPortfolioId]);
 
+  // 포트폴리오 변경 시 매수 내역 로드
+  useEffect(() => {
+    if (!portfolioId) return;
+    setSelectedBuyId(null);
+    setManualEntryRate("");
+
+    if (entryRateTab === "select") {
+      fetchBuyTransactions();
+    }
+  }, [portfolioId]);
+
+  // 탭 변경 시 매수 내역 로드
+  useEffect(() => {
+    if (entryRateTab === "select" && portfolioId && buyTransactions.length === 0) {
+      fetchBuyTransactions();
+    }
+    if (entryRateTab === "none") {
+      setSelectedBuyId(null);
+      setManualEntryRate("");
+    }
+    if (entryRateTab === "manual") {
+      setSelectedBuyId(null);
+    }
+    if (entryRateTab === "select") {
+      setManualEntryRate("");
+    }
+  }, [entryRateTab]);
+
+  const fetchBuyTransactions = async () => {
+    setLoadingBuys(true);
+    try {
+      const res = await fetch(`/api/transactions?portfolioId=${portfolioId}&type=BUY&limit=100`);
+      const data = await res.json();
+      setBuyTransactions(data.transactions || []);
+    } catch {
+      // 실패 시 빈 목록
+    } finally {
+      setLoadingBuys(false);
+    }
+  };
+
   // 30초마다 환율 자동 갱신
   useEffect(() => {
     refreshTimerRef.current = setInterval(() => {
@@ -116,14 +172,28 @@ function SellForm() {
   const balance = selectedPortfolio?.currentBalance || 0;
   const avgBuyRate = selectedPortfolio?.avgBuyRate || 0;
   const currentRate = rates.find((r) => r.currency === currency)?.rate || 0;
-  const effectiveRate = useCustomRate ? parseFloat(customRate) || 0 : currentRate;
+  // 사용자 입력 환율은 표시 단위(JPY: 100엔당)로 입력 → 내부 단위(1엔당)로 변환
+  const effectiveRate = useCustomRate
+    ? getInternalRate(currency, parseFloat(customRate) || 0)
+    : currentRate;
 
   const amountNum = parseFloat(amount) || 0;
   const feeNum = parseFloat(fee) || 0;
   const krwAmount = amountNum * effectiveRate;
   const totalKrw = krwAmount - feeNum;
 
-  const costBasis = amountNum * avgBuyRate;
+  // 진입가 결정
+  const selectedBuy = buyTransactions.find((b) => b.id === selectedBuyId);
+  const resolvedEntryRate =
+    entryRateTab === "select" && selectedBuy
+      ? selectedBuy.rate
+      : entryRateTab === "manual" && manualEntryRate
+        ? getInternalRate(currency, parseFloat(manualEntryRate) || 0)
+        : null;
+
+  // 손익 계산: 진입가 있으면 진입가 기반, 없으면 평균단가 기반
+  const entryRateForCalc = resolvedEntryRate ?? avgBuyRate;
+  const costBasis = amountNum * entryRateForCalc;
   const profitLoss = krwAmount - costBasis;
   const profitPercent = costBasis > 0 ? (profitLoss / costBasis) * 100 : 0;
 
@@ -160,7 +230,7 @@ function SellForm() {
           setRates(freshData.rates);
           setRateUpdatedAt(new Date());
           setError(
-            `환율이 변동되었습니다 (${formatRate(effectiveRate)} → ${formatRate(freshRate)}원). 새 환율을 확인 후 다시 시도해주세요.`
+            `환율이 변동되었습니다 (${formatRate(getDisplayRate(currency, effectiveRate))} → ${formatRate(getDisplayRate(currency, freshRate))}원/${getRateUnit(currency)}). 새 환율을 확인 후 다시 시도해주세요.`
           );
           setIsSubmitting(false);
           return;
@@ -174,18 +244,27 @@ function SellForm() {
 
       const submitRate = useCustomRate ? effectiveRate : (rates.find((r) => r.currency === currency)?.rate || effectiveRate);
 
+      // 진입가/매수건 연결 정보
+      const submitBody: Record<string, unknown> = {
+        portfolioId,
+        type: "SELL",
+        amount: amountNum,
+        rate: submitRate,
+        fee: feeNum,
+        memo: memo || undefined,
+        tradedAt: new Date(tradedAt).toISOString(),
+      };
+
+      if (entryRateTab === "select" && selectedBuyId) {
+        submitBody.linkedBuyId = selectedBuyId;
+      } else if (entryRateTab === "manual" && manualEntryRate) {
+        submitBody.entryRate = getInternalRate(currency, parseFloat(manualEntryRate));
+      }
+
       const res = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          portfolioId,
-          type: "SELL",
-          amount: amountNum,
-          rate: submitRate,
-          fee: feeNum,
-          memo: memo || undefined,
-          tradedAt: new Date(tradedAt).toISOString(),
-        }),
+        body: JSON.stringify(submitBody),
       });
 
       const data = await res.json();
@@ -234,6 +313,7 @@ function SellForm() {
           {profitLoss !== 0 && (
             <p className={`mt-2 font-medium ${profitLoss >= 0 ? "text-emerald-600" : "text-red-600"}`}>
               실현 손익: {profitLoss >= 0 ? "+" : ""}{formatKRW(profitLoss)}
+              {resolvedEntryRate ? " (진입가 기준)" : " (평균단가 기준)"}
             </p>
           )}
         </CardContent>
@@ -309,7 +389,7 @@ function SellForm() {
               </Button>
             </div>
             <p className="text-xs text-blue-600 mt-2">
-              평균 매수가: {formatRate(avgBuyRate)}원
+              평균 매수가: {formatRate(getDisplayRate(currency, avgBuyRate))}원/{getRateUnit(currency)}
             </p>
           </div>
         )}
@@ -359,7 +439,7 @@ function SellForm() {
                 step="0.01"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                원/{currency}
+                원/{getRateUnit(currency)}
               </span>
             </div>
           ) : (
@@ -372,8 +452,8 @@ function SellForm() {
                   </span>
                   <span className="text-sm">
                     실시간 환율:{" "}
-                    <strong className="tabular-nums text-base">{formatRate(currentRate)}</strong>{" "}
-                    원/{currency}
+                    <strong className="tabular-nums text-base">{formatRate(getDisplayRate(currency, currentRate))}</strong>{" "}
+                    원/{getRateUnit(currency)}
                   </span>
                 </div>
                 <Button
@@ -394,6 +474,123 @@ function SellForm() {
             </div>
           )}
         </div>
+
+        {/* 진입가 설정 (선택사항) */}
+        {selectedPortfolio && (
+          <div>
+            <label className="text-sm font-medium mb-2 block">진입가 설정 (선택사항)</label>
+            <p className="text-xs text-muted-foreground mb-3">
+              매수건을 연결하거나 진입가를 입력하면 개별 실현손익을 추적할 수 있습니다.
+            </p>
+
+            {/* 탭 선택 */}
+            <div className="flex gap-1 p-1 bg-gray-100 rounded-lg mb-3">
+              <button
+                type="button"
+                onClick={() => setEntryRateTab("none")}
+                className={`flex-1 text-xs py-1.5 px-3 rounded-md transition-colors ${
+                  entryRateTab === "none"
+                    ? "bg-white shadow-sm font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                설정 안함
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryRateTab("select")}
+                className={`flex-1 text-xs py-1.5 px-3 rounded-md transition-colors ${
+                  entryRateTab === "select"
+                    ? "bg-white shadow-sm font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                매수 내역 선택
+              </button>
+              <button
+                type="button"
+                onClick={() => setEntryRateTab("manual")}
+                className={`flex-1 text-xs py-1.5 px-3 rounded-md transition-colors ${
+                  entryRateTab === "manual"
+                    ? "bg-white shadow-sm font-medium"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                직접 입력
+              </button>
+            </div>
+
+            {/* 매수 내역 선택 */}
+            {entryRateTab === "select" && (
+              <div className="border rounded-lg max-h-48 overflow-y-auto">
+                {loadingBuys ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    매수 내역 로딩 중...
+                  </div>
+                ) : buyTransactions.length === 0 ? (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    매수 내역이 없습니다.
+                  </div>
+                ) : (
+                  buyTransactions.map((buy) => (
+                    <button
+                      key={buy.id}
+                      type="button"
+                      onClick={() => setSelectedBuyId(selectedBuyId === buy.id ? null : buy.id)}
+                      className={`w-full text-left px-3 py-2.5 border-b last:border-0 text-sm transition-colors ${
+                        selectedBuyId === buy.id
+                          ? "bg-blue-50 border-l-2 border-l-blue-500"
+                          : "hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="font-medium tabular-nums">
+                            {formatCurrency(buy.amount, currency)}
+                          </span>
+                          <span className="text-muted-foreground mx-1">@</span>
+                          <span className="tabular-nums">
+                            {formatRate(getDisplayRate(currency, buy.rate))}원/{getRateUnit(currency)}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDateTime(buy.tradedAt)}
+                        </span>
+                      </div>
+                      {buy.memo && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{buy.memo}</p>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* 진입가 직접 입력 */}
+            {entryRateTab === "manual" && (
+              <div className="relative">
+                <Input
+                  type="number"
+                  placeholder="진입가 입력"
+                  value={manualEntryRate}
+                  onChange={(e) => setManualEntryRate(e.target.value)}
+                  className="pr-20"
+                  step="0.01"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
+                  원/{getRateUnit(currency)}
+                </span>
+              </div>
+            )}
+
+            {/* 선택된 진입가 표시 */}
+            {resolvedEntryRate !== null && (
+              <div className="mt-2 text-xs text-blue-600">
+                진입가: {formatRate(getDisplayRate(currency, resolvedEntryRate))}원/{getRateUnit(currency)}
+              </div>
+            )}
+          </div>
+        )}
 
         <div>
           <label className="text-sm font-medium mb-2 block">수수료 (선택)</label>
@@ -439,11 +636,16 @@ function SellForm() {
               <span>수령 예상 금액</span>
               <span className="tabular-nums text-blue-600">{formatKRW(totalKrw)}</span>
             </div>
-            {avgBuyRate > 0 && (
+            {entryRateForCalc > 0 && (
               <>
                 <hr />
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">예상 실현 손익</span>
+                  <span className="text-muted-foreground">
+                    예상 실현 손익
+                    <span className="text-xs ml-1">
+                      ({resolvedEntryRate ? "진입가" : "평균단가"} 기준)
+                    </span>
+                  </span>
                   <span
                     className={`tabular-nums font-medium ${
                       profitLoss >= 0 ? "text-emerald-600" : "text-red-600"

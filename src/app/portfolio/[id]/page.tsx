@@ -18,7 +18,7 @@ import {
   History,
 } from "lucide-react";
 import Link from "next/link";
-import { formatKRW, formatCurrency, formatRate, formatPercent } from "@/lib/utils";
+import { formatKRW, formatCurrency, formatRate, formatPercent, getDisplayRate, getRateUnit } from "@/lib/utils";
 
 interface Portfolio {
   id: string;
@@ -29,6 +29,7 @@ interface Portfolio {
   currentBalance: number;
   avgBuyRate: number;
   totalInvested: number;
+  totalRealizedPnl: number;
   broker: string;
   createdAt: string;
   recentTransactions: {
@@ -39,6 +40,8 @@ interface Portfolio {
     krwAmount: number;
     tradedAt: string;
     memo: string | null;
+    entryRate: number | null;
+    realizedPnl: number | null;
   }[];
 }
 
@@ -407,6 +410,21 @@ export default function PortfolioDetailPage({
               </div>
             </div>
 
+            {/* 실현 손익 */}
+            {portfolio.totalRealizedPnl !== 0 && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-xl">
+                <p className="text-xs text-muted-foreground mb-1">실현 손익 (누적)</p>
+                <p
+                  className={`text-xl font-bold tabular-nums ${
+                    portfolio.totalRealizedPnl >= 0 ? "text-emerald-600" : "text-red-600"
+                  }`}
+                >
+                  {portfolio.totalRealizedPnl >= 0 ? "+" : ""}
+                  {formatKRW(portfolio.totalRealizedPnl)}
+                </p>
+              </div>
+            )}
+
             {/* 상세 정보 */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6 pt-6 border-t">
               <div>
@@ -418,13 +436,13 @@ export default function PortfolioDetailPage({
               <div>
                 <p className="text-xs text-muted-foreground">평균 매수가</p>
                 <p className="font-medium tabular-nums">
-                  {formatRate(portfolio.avgBuyRate)}원
+                  {formatRate(getDisplayRate(portfolio.currency, portfolio.avgBuyRate))}원/{getRateUnit(portfolio.currency)}
                 </p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">현재 환율</p>
                 <p className="font-medium tabular-nums">
-                  {formatRate(rateToUse)}원
+                  {formatRate(getDisplayRate(portfolio.currency, rateToUse))}원/{getRateUnit(portfolio.currency)}
                 </p>
               </div>
             </div>
@@ -476,7 +494,7 @@ export default function PortfolioDetailPage({
                           {formatCurrency(tx.amount, portfolio.currency)}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {formatRate(tx.rate)}원 •{" "}
+                          {formatRate(getDisplayRate(portfolio.currency, tx.rate))}원/{getRateUnit(portfolio.currency)} •{" "}
                           {new Date(tx.tradedAt).toLocaleDateString("ko-KR")}
                         </p>
                       </div>
@@ -485,6 +503,11 @@ export default function PortfolioDetailPage({
                       <p className="font-medium tabular-nums">
                         {formatKRW(tx.krwAmount)}
                       </p>
+                      {tx.type === "SELL" && tx.realizedPnl !== null && (
+                        <p className={`text-xs font-medium tabular-nums ${tx.realizedPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          {tx.realizedPnl >= 0 ? "+" : ""}{formatKRW(tx.realizedPnl)}
+                        </p>
+                      )}
                       {tx.memo && (
                         <p className="text-xs text-muted-foreground">
                           {tx.memo}

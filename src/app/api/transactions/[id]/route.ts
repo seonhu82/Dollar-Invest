@@ -13,6 +13,7 @@ async function recalculatePortfolio(tx: Parameters<Parameters<typeof prisma.$tra
   let balance = 0;
   let totalCost = 0;
   let totalInvested = 0;
+  let totalRealizedPnl = 0;
 
   for (const t of allTransactions) {
     const amount = Number(t.amount);
@@ -30,6 +31,9 @@ async function recalculatePortfolio(tx: Parameters<Parameters<typeof prisma.$tra
       totalInvested = balance > 0
         ? totalInvested * (balance / (balance + amount))
         : 0;
+      if (t.realizedPnl !== null) {
+        totalRealizedPnl += Number(t.realizedPnl);
+      }
     }
   }
 
@@ -41,16 +45,19 @@ async function recalculatePortfolio(tx: Parameters<Parameters<typeof prisma.$tra
       currentBalance: balance,
       avgBuyRate,
       totalInvested,
+      totalRealizedPnl,
     },
   });
 }
 
-// PATCH: 거래 수정 (환율, 금액, 수수료, 메모)
+// PATCH: 거래 수정 (환율, 금액, 수수료, 메모, 진입가)
 const updateTransactionSchema = z.object({
   rate: z.number().positive("환율은 0보다 커야 합니다").optional(),
   amount: z.number().positive("금액은 0보다 커야 합니다").optional(),
   fee: z.number().min(0).optional(),
   memo: z.string().max(200).optional().nullable(),
+  entryRate: z.number().positive().optional().nullable(),
+  linkedBuyId: z.string().optional().nullable(),
 });
 
 export async function PATCH(
@@ -106,6 +113,46 @@ export async function PATCH(
       const newFee = updates.fee ?? Number(transaction.fee);
       const newKrwAmount = newAmount * newRate + newFee;
 
+      // 진입가 및 실현손익 재계산 (SELL 거래만)
+      let entryRateUpdate: number | null | undefined = undefined;
+      let linkedBuyIdUpdate: string | null | undefined = undefined;
+      let realizedPnlUpdate: number | null | undefined = undefined;
+
+      if (transaction.type === "SELL") {
+        if (updates.linkedBuyId !== undefined) {
+          if (updates.linkedBuyId) {
+            const buyTx = await tx.transaction.findFirst({
+              where: { id: updates.linkedBuyId, portfolioId: transaction.portfolioId, type: "BUY" },
+            });
+            if (buyTx) {
+              entryRateUpdate = Number(buyTx.rate);
+              linkedBuyIdUpdate = updates.linkedBuyId;
+            }
+          } else {
+            linkedBuyIdUpdate = null;
+          }
+        }
+
+        if (updates.entryRate !== undefined) {
+          entryRateUpdate = updates.entryRate;
+        }
+
+        // 진입가가 변경되었으면 realizedPnl 재계산
+        if (entryRateUpdate !== undefined) {
+          if (entryRateUpdate !== null) {
+            realizedPnlUpdate = (newRate - entryRateUpdate) * newAmount;
+          } else {
+            realizedPnlUpdate = null;
+          }
+        } else if (updates.rate !== undefined || updates.amount !== undefined) {
+          // 환율/금액이 변경되었고 기존 진입가가 있으면 재계산
+          const existingEntryRate = transaction.entryRate ? Number(transaction.entryRate) : null;
+          if (existingEntryRate !== null) {
+            realizedPnlUpdate = (newRate - existingEntryRate) * newAmount;
+          }
+        }
+      }
+
       const updated = await tx.transaction.update({
         where: { id },
         data: {
@@ -113,6 +160,9 @@ export async function PATCH(
           ...(updates.amount !== undefined && { amount: updates.amount }),
           ...(updates.fee !== undefined && { fee: updates.fee }),
           ...(updates.memo !== undefined && { memo: updates.memo }),
+          ...(entryRateUpdate !== undefined && { entryRate: entryRateUpdate }),
+          ...(linkedBuyIdUpdate !== undefined && { linkedBuyId: linkedBuyIdUpdate }),
+          ...(realizedPnlUpdate !== undefined && { realizedPnl: realizedPnlUpdate }),
           krwAmount: newKrwAmount,
         },
       });
@@ -133,6 +183,8 @@ export async function PATCH(
         fee: Number(result.fee),
         memo: result.memo,
         tradedAt: result.tradedAt,
+        entryRate: result.entryRate ? Number(result.entryRate) : null,
+        realizedPnl: result.realizedPnl ? Number(result.realizedPnl) : null,
       },
     });
   } catch (error) {
@@ -182,6 +234,14 @@ export async function DELETE(
     }
 
     await prisma.$transaction(async (tx) => {
+      // BUY 삭제 시 연결된 SELL의 linkedBuyId를 null로 (entryRate는 보존)
+      if (transaction.type === "BUY") {
+        await tx.transaction.updateMany({
+          where: { linkedBuyId: id },
+          data: { linkedBuyId: null },
+        });
+      }
+
       await tx.transaction.delete({
         where: { id },
       });

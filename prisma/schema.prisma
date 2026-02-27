@@ -120,9 +120,10 @@ model Portfolio {
   description String?
   isDefault   Boolean @default(false)
 
-  currentBalance Decimal @default(0) 
-  avgBuyRate     Decimal @default(0) 
-  totalInvested  Decimal @default(0) 
+  currentBalance   Decimal @default(0)
+  avgBuyRate       Decimal @default(0)
+  totalInvested    Decimal @default(0)
+  totalRealizedPnl Decimal @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -143,10 +144,14 @@ model Transaction {
   type     String
   currency String @default("USD")
 
-  amount    Decimal 
-  rate      Decimal 
-  krwAmount Decimal 
-  fee       Decimal @default(0) 
+  amount    Decimal
+  rate      Decimal
+  krwAmount Decimal
+  fee       Decimal @default(0)
+
+  linkedBuyId String?
+  entryRate   Decimal?
+  realizedPnl Decimal?
 
   orderId     String?
   orderStatus String?
@@ -162,9 +167,12 @@ model Transaction {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   portfolio     Portfolio      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
   brokerAccount BrokerAccount? @relation(fields: [brokerAccountId], references: [id])
+  linkedBuy     Transaction?   @relation("SellToBuy", fields: [linkedBuyId], references: [id], onDelete: SetNull)
+  linkedSells   Transaction[]  @relation("SellToBuy")
 
   @@index([userId, tradedAt])
   @@index([portfolioId])
+  @@index([linkedBuyId])
 }
 
 // ==================== 분할 매수/매도 계획 ====================

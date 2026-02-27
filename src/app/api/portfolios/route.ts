@@ -46,6 +46,7 @@ export async function GET() {
       currentBalance: Number(p.currentBalance),
       avgBuyRate: Number(p.avgBuyRate),
       totalInvested: Number(p.totalInvested),
+      totalRealizedPnl: Number(p.totalRealizedPnl),
       broker: p.brokerAccount?.broker || "MANUAL",
       brokerAccountId: p.brokerAccountId,
       accountAlias: p.brokerAccount?.accountAlias,

@@ -13,6 +13,8 @@ const createTransactionSchema = z.object({
   fee: z.number().min(0).optional().default(0),
   memo: z.string().max(200).optional(),
   tradedAt: z.string().optional(), // ISO date string
+  linkedBuyId: z.string().optional(),
+  entryRate: z.number().positive().optional(),
 });
 
 // GET: 거래 내역 조회
@@ -70,6 +72,9 @@ export async function GET(request: Request) {
         isManual: t.isManual,
         portfolioId: t.portfolioId,
         portfolioName: t.portfolio.name,
+        linkedBuyId: t.linkedBuyId,
+        entryRate: t.entryRate ? Number(t.entryRate) : null,
+        realizedPnl: t.realizedPnl ? Number(t.realizedPnl) : null,
       })),
       total,
       hasMore: offset + transactions.length < total,
@@ -102,7 +107,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { portfolioId, type, amount, rate, fee, memo, tradedAt } = validation.data;
+    const { portfolioId, type, amount, rate, fee, memo, tradedAt, linkedBuyId, entryRate: directEntryRate } = validation.data;
 
     // 포트폴리오 소유권 확인
     const portfolio = await prisma.portfolio.findFirst({
@@ -127,6 +132,31 @@ export async function POST(request: Request) {
       );
     }
 
+    // 진입가 및 실현손익 계산 (SELL만)
+    let entryRate: number | null = null;
+    let realizedPnl: number | null = null;
+    let resolvedLinkedBuyId: string | null = null;
+
+    if (type === "SELL") {
+      if (linkedBuyId) {
+        // 매수건 연결 → 해당 매수건의 rate를 진입가로 사용
+        const buyTx = await prisma.transaction.findFirst({
+          where: { id: linkedBuyId, portfolioId, type: "BUY", userId: session.user.id },
+        });
+        if (buyTx) {
+          entryRate = Number(buyTx.rate);
+          resolvedLinkedBuyId = linkedBuyId;
+        }
+      } else if (directEntryRate) {
+        // 직접 입력된 진입가
+        entryRate = directEntryRate;
+      }
+
+      if (entryRate !== null) {
+        realizedPnl = (rate - entryRate) * amount;
+      }
+    }
+
     // 원화 금액 계산
     const krwAmount = amount * rate + fee;
 
@@ -146,6 +176,9 @@ export async function POST(request: Request) {
           memo,
           tradedAt: tradedAt ? new Date(tradedAt) : new Date(),
           isManual: true,
+          linkedBuyId: resolvedLinkedBuyId,
+          entryRate,
+          realizedPnl,
         },
       });
 
@@ -153,10 +186,12 @@ export async function POST(request: Request) {
       const currentBalance = Number(portfolio.currentBalance);
       const currentAvgRate = Number(portfolio.avgBuyRate);
       const currentInvested = Number(portfolio.totalInvested);
+      const currentRealizedPnl = Number(portfolio.totalRealizedPnl);
 
       let newBalance: number;
       let newAvgRate: number;
       let newInvested: number;
+      let newRealizedPnl = currentRealizedPnl;
 
       if (type === "BUY") {
         // 매수: 잔액 증가, 평균 단가 재계산
@@ -173,6 +208,9 @@ export async function POST(request: Request) {
         newInvested = newBalance > 0
           ? currentInvested * (newBalance / currentBalance)
           : 0;
+        if (realizedPnl !== null) {
+          newRealizedPnl += realizedPnl;
+        }
       }
 
       await tx.portfolio.update({
@@ -181,6 +219,7 @@ export async function POST(request: Request) {
           currentBalance: newBalance,
           avgBuyRate: newAvgRate,
           totalInvested: newInvested,
+          totalRealizedPnl: newRealizedPnl,
         },
       });
 
@@ -195,6 +234,8 @@ export async function POST(request: Request) {
         rate: Number(result.rate),
         krwAmount: Number(result.krwAmount),
         tradedAt: result.tradedAt,
+        entryRate: result.entryRate ? Number(result.entryRate) : null,
+        realizedPnl: result.realizedPnl ? Number(result.realizedPnl) : null,
       },
     });
   } catch (error) {

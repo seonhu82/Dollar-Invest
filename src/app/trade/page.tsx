@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { formatKRW, formatRate, formatDateTime, formatCurrency } from "@/lib/utils";
+import { formatKRW, formatRate, formatDateTime, formatCurrency, getDisplayRate, getInternalRate, getRateUnit } from "@/lib/utils";
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -34,6 +34,9 @@ interface Transaction {
   portfolioId: string;
   portfolioName: string;
   isManual: boolean;
+  linkedBuyId: string | null;
+  entryRate: number | null;
+  realizedPnl: number | null;
 }
 
 interface EditState {
@@ -41,6 +44,7 @@ interface EditState {
   amount: string;
   fee: string;
   memo: string;
+  entryRate: string;
 }
 
 function TradeContent() {
@@ -54,7 +58,7 @@ function TradeContent() {
   const [filterType, setFilterType] = useState<"ALL" | "BUY" | "SELL">("ALL");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editState, setEditState] = useState<EditState>({ rate: "", amount: "", fee: "", memo: "" });
+  const [editState, setEditState] = useState<EditState>({ rate: "", amount: "", fee: "", memo: "", entryRate: "" });
   const [saving, setSaving] = useState(false);
 
   const fetchTransactions = async () => {
@@ -110,24 +114,26 @@ function TradeContent() {
   const handleEditStart = (tx: Transaction) => {
     setEditingId(tx.id);
     setEditState({
-      rate: tx.rate.toString(),
+      rate: getDisplayRate(tx.currency, tx.rate).toString(),
       amount: tx.amount.toString(),
       fee: tx.fee.toString(),
       memo: tx.memo || "",
+      entryRate: tx.entryRate ? getDisplayRate(tx.currency, tx.entryRate).toString() : "",
     });
   };
 
   const handleEditCancel = () => {
     setEditingId(null);
-    setEditState({ rate: "", amount: "", fee: "", memo: "" });
+    setEditState({ rate: "", amount: "", fee: "", memo: "", entryRate: "" });
   };
 
   const handleEditSave = async (tx: Transaction) => {
-    const newRate = parseFloat(editState.rate);
+    const displayRate = parseFloat(editState.rate);
+    const newRate = getInternalRate(tx.currency, displayRate);
     const newAmount = parseFloat(editState.amount);
     const newFee = parseFloat(editState.fee);
 
-    if (!newRate || newRate <= 0) {
+    if (!displayRate || displayRate <= 0) {
       setError("환율은 0보다 커야 합니다.");
       return;
     }
@@ -145,6 +151,16 @@ function TradeContent() {
       if (newAmount !== tx.amount) body.amount = newAmount;
       if (newFee !== tx.fee) body.fee = newFee;
       if (editState.memo !== (tx.memo || "")) body.memo = editState.memo || null;
+
+      // 진입가 수정 (SELL만)
+      if (tx.type === "SELL") {
+        const newEntryRateDisplay = parseFloat(editState.entryRate);
+        const newEntryRate = newEntryRateDisplay ? getInternalRate(tx.currency, newEntryRateDisplay) : null;
+        const oldEntryRate = tx.entryRate;
+        if (newEntryRate !== oldEntryRate) {
+          body.entryRate = newEntryRate;
+        }
+      }
 
       if (Object.keys(body).length === 0) {
         handleEditCancel();
@@ -352,7 +368,7 @@ function TradeContent() {
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div>
-                          <label className="text-xs text-muted-foreground mb-1 block">적용 환율 (원)</label>
+                          <label className="text-xs text-muted-foreground mb-1 block">적용 환율 (원/{getRateUnit(tx.currency)})</label>
                           <Input
                             type="number"
                             value={editState.rate}
@@ -383,6 +399,20 @@ function TradeContent() {
                         </div>
                       </div>
 
+                      {tx.type === "SELL" && (
+                        <div>
+                          <label className="text-xs text-muted-foreground mb-1 block">진입가 (원/{getRateUnit(tx.currency)}, 선택)</label>
+                          <Input
+                            type="number"
+                            value={editState.entryRate}
+                            onChange={(e) => setEditState({ ...editState, entryRate: e.target.value })}
+                            placeholder="미설정"
+                            step="0.01"
+                            className="h-9 bg-white"
+                          />
+                        </div>
+                      )}
+
                       <div>
                         <label className="text-xs text-muted-foreground mb-1 block">메모</label>
                         <Input
@@ -398,9 +428,9 @@ function TradeContent() {
                       {parseFloat(editState.rate) > 0 && parseFloat(editState.amount) > 0 && (
                         <div className="text-xs text-muted-foreground pt-2 border-t">
                           수정 후 원화 금액: <strong className="text-foreground tabular-nums">
-                            {formatKRW(parseFloat(editState.amount) * parseFloat(editState.rate) + (parseFloat(editState.fee) || 0))}
+                            {formatKRW(parseFloat(editState.amount) * getInternalRate(tx.currency, parseFloat(editState.rate)) + (parseFloat(editState.fee) || 0))}
                           </strong>
-                          {tx.krwAmount !== parseFloat(editState.amount) * parseFloat(editState.rate) + (parseFloat(editState.fee) || 0) && (
+                          {tx.krwAmount !== parseFloat(editState.amount) * getInternalRate(tx.currency, parseFloat(editState.rate)) + (parseFloat(editState.fee) || 0) && (
                             <span className="text-orange-600 ml-2">
                               (기존: {formatKRW(tx.krwAmount)})
                             </span>
@@ -443,6 +473,16 @@ function TradeContent() {
                             {tx.portfolioName} ·{" "}
                             {formatDateTime(tx.tradedAt)}
                           </div>
+                          {tx.type === "SELL" && tx.entryRate !== null && (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              진입가: {formatRate(getDisplayRate(tx.currency, tx.entryRate))}원/{getRateUnit(tx.currency)}
+                              {tx.realizedPnl !== null && (
+                                <span className={`ml-2 font-medium ${tx.realizedPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                                  실현손익: {tx.realizedPnl >= 0 ? "+" : ""}{formatKRW(tx.realizedPnl)}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {tx.memo && (
                             <div className="text-sm text-muted-foreground mt-1">
                               {tx.memo}
@@ -457,7 +497,7 @@ function TradeContent() {
                             {formatKRW(tx.krwAmount)}
                           </div>
                           <div className="text-sm text-muted-foreground tabular-nums">
-                            @ {formatRate(tx.rate)}원
+                            @ {formatRate(getDisplayRate(tx.currency, tx.rate))}원/{getRateUnit(tx.currency)}
                           </div>
                         </div>
 
