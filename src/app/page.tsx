@@ -143,7 +143,7 @@ export default function DashboardPage() {
   const currencyOrder = ["USD", "EUR", "GBP", "JPY", "CNY"];
   const mainRates = currencyOrder
     .map((cur) => rates.find((r) => r.currency === cur))
-    .filter((r): r is ExchangeRate => r !== null);
+    .filter((r): r is ExchangeRate => r != null);
 
   return (
     <div className="min-h-screen bg-background">
