@@ -53,8 +53,9 @@ export function Header() {
   const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
   return (
-    <header className="sticky top-0 z-50 w-full">
-      <div className="bg-[#f4f4f5]">
+    <>
+    <header className="sticky top-0 z-50 w-full bg-[#f4f4f5]">
+      <div>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex h-14 items-center">
           {/* 로고 */}
           <Link href="/" className="mr-8 flex items-center space-x-2.5">
@@ -130,10 +131,11 @@ export function Header() {
           </div>
         </div>
       </div>
-
-      {/* 환율 알림 배너 - 모든 페이지 상단, 관리 통화 로테이션 */}
-      <ExchangeAlertBanner />
     </header>
+
+    {/* 환율 알림 배너 - 헤더 아래 별도 영역, 페이지 콘텐츠와 겹치지 않음 */}
+    <ExchangeAlertBanner />
+    </>
   );
 }
 

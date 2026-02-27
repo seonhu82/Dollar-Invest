@@ -392,7 +392,7 @@ export function ExchangeAlertBanner() {
     <>
       <div
         className={cn(
-          "w-full border-b transition-all duration-500 backdrop-blur-md",
+          "w-full border-b transition-all duration-500",
           style.bg,
           style.border,
           style.pulse && "animate-[pulse_3s_ease-in-out_infinite]"
