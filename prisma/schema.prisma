@@ -23,6 +23,11 @@ model User {
   isPro         Boolean   @default(false)
   proExpiresAt  DateTime?
 
+  // 알림 설정
+  notifRateAlert     Boolean @default(true)
+  notifDailyReport   Boolean @default(false)
+  notifOrderComplete Boolean @default(true)
+
   // 계정 상태
   isActive      Boolean   @default(true)
   suspendedAt   DateTime?

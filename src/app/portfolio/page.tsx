@@ -37,21 +37,32 @@ export default function PortfolioPage() {
     setError("");
 
     try {
-      // 포트폴리오와 환율 동시 조회
-      const [portfolioRes, rateRes] = await Promise.all([
-        fetch("/api/portfolios"),
-        fetch("/api/exchange/rates"),
-      ]);
-
+      // 포트폴리오 조회
+      const portfolioRes = await fetch("/api/portfolios");
       const portfolioData = await portfolioRes.json();
-      const rateData = await rateRes.json();
 
       if (!portfolioRes.ok) {
         throw new Error(portfolioData.error);
       }
 
       setPortfolios(portfolioData.portfolios || []);
-      setRates(rateData.rates || []);
+
+      // 환율 조회 (히스토리 API - 대시보드/환율 페이지와 동일 소스)
+      const currencies = ["USD", "JPY", "EUR", "GBP", "CNY"];
+      const rateResults = await Promise.all(
+        currencies.map(async (cur) => {
+          try {
+            const res = await fetch(`/api/exchange/history?currency=${cur}&days=7`);
+            const data = await res.json();
+            if (!data.history || data.history.length === 0) return null;
+            const latest = data.history[data.history.length - 1];
+            return { currency: cur, rate: latest.rate };
+          } catch {
+            return null;
+          }
+        })
+      );
+      setRates(rateResults.filter((r): r is ExchangeRate => r != null));
     } catch (err) {
       setError(err instanceof Error ? err.message : "데이터를 불러오는데 실패했습니다.");
     } finally {
