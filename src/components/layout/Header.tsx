@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useBridgeStore } from "@/stores/bridgeStore";
 import { Button } from "@/components/ui/button";
+import { ExchangeAlertBanner } from "@/components/exchange/ExchangeAlertBanner";
 import {
   DollarSign,
   LayoutDashboard,
@@ -52,81 +53,86 @@ export function Header() {
   const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
   return (
-    <header className="sticky top-0 z-50 w-full bg-[#f4f4f5]">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex h-14 items-center">
-        {/* 로고 */}
-        <Link href="/" className="mr-8 flex items-center space-x-2.5">
-          <div className="p-1.5 bg-gray-900 rounded-lg">
-            <DollarSign className="h-4 w-4 text-white" />
-          </div>
-          <span className="hidden font-semibold text-gray-900 sm:inline-block">
-            달러인베스트
-          </span>
-        </Link>
+    <header className="sticky top-0 z-50 w-full">
+      <div className="bg-[#f4f4f5]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex h-14 items-center">
+          {/* 로고 */}
+          <Link href="/" className="mr-8 flex items-center space-x-2.5">
+            <div className="p-1.5 bg-gray-900 rounded-lg">
+              <DollarSign className="h-4 w-4 text-white" />
+            </div>
+            <span className="hidden font-semibold text-gray-900 sm:inline-block">
+              달러인베스트
+            </span>
+          </Link>
 
-        {/* 네비게이션 */}
-        <nav className="flex items-center space-x-0.5 sm:space-x-1 text-sm overflow-x-auto scrollbar-hide">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href;
-            return (
+          {/* 네비게이션 */}
+          <nav className="flex items-center space-x-0.5 sm:space-x-1 text-sm overflow-x-auto scrollbar-hide">
+            {navigation.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center space-x-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
+                    isActive
+                      ? "bg-white text-gray-900 font-medium shadow-sm"
+                      : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
+                  )}
+                >
+                  <item.icon className="h-4 w-4" />
+                  <span className="hidden lg:inline-block">{item.name}</span>
+                </Link>
+              );
+            })}
+            {/* 관리자 메뉴 */}
+            {isAdmin && (
               <Link
-                key={item.href}
-                href={item.href}
+                href="/admin"
                 className={cn(
                   "flex items-center space-x-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
-                  isActive
-                    ? "bg-white text-gray-900 font-medium shadow-sm"
-                    : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
+                  pathname === "/admin"
+                    ? "bg-red-100 text-red-700 font-medium shadow-sm"
+                    : "text-red-500 hover:text-red-700 hover:bg-red-50"
                 )}
               >
-                <item.icon className="h-4 w-4" />
-                <span className="hidden lg:inline-block">{item.name}</span>
+                <Shield className="h-4 w-4" />
+                <span className="hidden lg:inline-block">관리자</span>
               </Link>
-            );
-          })}
-          {/* 관리자 메뉴 */}
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className={cn(
-                "flex items-center space-x-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
-                pathname === "/admin"
-                  ? "bg-red-100 text-red-700 font-medium shadow-sm"
-                  : "text-red-500 hover:text-red-700 hover:bg-red-50"
-              )}
-            >
-              <Shield className="h-4 w-4" />
-              <span className="hidden lg:inline-block">관리자</span>
-            </Link>
-          )}
-        </nav>
+            )}
+          </nav>
 
-        {/* 우측 영역 */}
-        <div className="ml-auto flex items-center space-x-4">
-          <BridgeStatusIndicator />
+          {/* 우측 영역 */}
+          <div className="ml-auto flex items-center space-x-4">
+            <BridgeStatusIndicator />
 
-          {session ? (
-            <div className="flex items-center space-x-3">
-              <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-600">
-                <User className="h-4 w-4" />
-                <span>{session.user?.name || session.user?.email}</span>
+            {session ? (
+              <div className="flex items-center space-x-3">
+                <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-600">
+                  <User className="h-4 w-4" />
+                  <span>{session.user?.name || session.user?.email}</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                  className="text-gray-500 hover:text-gray-900"
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => signOut({ callbackUrl: "/login" })}
-                className="text-gray-500 hover:text-gray-900"
-              >
-                <LogOut className="h-4 w-4" />
+            ) : (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/login">로그인</Link>
               </Button>
-            </div>
-          ) : (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/login">로그인</Link>
-            </Button>
-          )}
+            )}
+          </div>
         </div>
       </div>
+
+      {/* 환율 알림 배너 - 모든 페이지 상단, 관리 통화 로테이션 */}
+      <ExchangeAlertBanner />
     </header>
   );
 }
