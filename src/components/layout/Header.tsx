@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
-import { useBridgeStore } from "@/stores/bridgeStore";
 import { Button } from "@/components/ui/button";
 import { ExchangeAlertBanner } from "@/components/exchange/ExchangeAlertBanner";
 import {
@@ -15,7 +14,6 @@ import {
   Wallet,
   Bell,
   Settings,
-  Link2,
   LogOut,
   User,
   Shield,
@@ -27,7 +25,6 @@ const navigation = [
   { name: "포트폴리오", href: "/portfolio", icon: Wallet },
   { name: "거래", href: "/trade", icon: DollarSign },
   { name: "알림", href: "/alerts", icon: Bell },
-  { name: "연동", href: "/broker", icon: Link2 },
   { name: "설정", href: "/settings", icon: Settings },
 ];
 
@@ -106,8 +103,6 @@ export function Header() {
 
           {/* 우측 영역 */}
           <div className="ml-auto flex items-center space-x-4">
-            <BridgeStatusIndicator />
-
             {session ? (
               <div className="flex items-center space-x-3">
                 <div className="hidden sm:flex items-center space-x-2 text-sm text-gray-600">
@@ -133,45 +128,8 @@ export function Header() {
       </div>
     </header>
 
-    {/* 환율 알림 배너 - 헤더 아래 별도 영역, 페이지 콘텐츠와 겹치지 않음 */}
+    {/* 환율 알림 배너 - 헤더 아래 별도 영역 */}
     <ExchangeAlertBanner />
     </>
-  );
-}
-
-function BridgeStatusIndicator() {
-  const { connected, hanaConnected, checkStatus, isChecking } = useBridgeStore();
-
-  useEffect(() => {
-    checkStatus();
-    const interval = setInterval(checkStatus, 30000);
-    return () => clearInterval(interval);
-  }, [checkStatus]);
-
-  const statusText = hanaConnected
-    ? "하나증권 연결됨"
-    : connected
-    ? "브릿지 연결됨"
-    : "브릿지 미연결";
-
-  const statusColor = hanaConnected
-    ? "bg-green-500"
-    : connected
-    ? "bg-yellow-500"
-    : "bg-gray-300";
-
-  return (
-    <div className="flex items-center space-x-2 text-sm">
-      <div
-        className={cn(
-          "h-2 w-2 rounded-full transition-colors",
-          isChecking && "animate-pulse",
-          statusColor
-        )}
-      />
-      <span className="hidden text-muted-foreground sm:inline-block">
-        {statusText}
-      </span>
-    </div>
   );
 }

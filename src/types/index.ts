@@ -1,5 +1,5 @@
 // 증권사 타입
-export type BrokerType = "HANA" | "KIS" | "MANUAL";
+export type BrokerType = "MANUAL";
 
 // 거래 타입
 export type TransactionType = "BUY" | "SELL";
@@ -56,14 +56,6 @@ export interface TransactionData {
   memo?: string;
   tradedAt: Date;
   isManual: boolean;
-}
-
-// 브릿지 상태
-export interface BridgeStatus {
-  connected: boolean;
-  version?: string;
-  hanaConnected?: boolean;
-  lastSync?: Date;
 }
 
 // API 응답

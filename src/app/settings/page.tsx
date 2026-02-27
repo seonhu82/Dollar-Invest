@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import { User, Bell, Link2, Shield, Moon, Globe } from "lucide-react";
+import { User, Bell, Shield, Globe } from "lucide-react";
 
 export default function SettingsPage() {
   const [notifications, setNotifications] = useState({
@@ -93,37 +93,6 @@ export default function SettingsPage() {
                 onChange={(e) => setNotifications({ ...notifications, orderComplete: e.target.checked })}
                 className="h-5 w-5"
               />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* 연동 */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Link2 className="h-5 w-5" />
-              <CardTitle>증권사 연동</CardTitle>
-            </div>
-            <CardDescription>증권사 API 연동 상태</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">하나증권</p>
-                <p className="text-sm text-muted-foreground">PC 브릿지 연결 필요</p>
-              </div>
-              <Button variant="outline" asChild>
-                <a href="/broker">설정</a>
-              </Button>
-            </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">한국투자증권</p>
-                <p className="text-sm text-muted-foreground">API 키 연동</p>
-              </div>
-              <Button variant="outline" asChild>
-                <a href="/broker">설정</a>
-              </Button>
             </div>
           </CardContent>
         </Card>

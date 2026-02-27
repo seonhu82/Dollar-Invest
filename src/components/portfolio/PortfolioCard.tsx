@@ -16,7 +16,7 @@ interface PortfolioCardProps {
   totalInvested: number;
   totalRealizedPnl?: number;
   currentRate: number;
-  broker: string;
+  broker?: string;
 }
 
 export function PortfolioCard({
@@ -28,7 +28,6 @@ export function PortfolioCard({
   totalInvested,
   totalRealizedPnl = 0,
   currentRate,
-  broker,
 }: PortfolioCardProps) {
   // 현재 평가액
   const currentValue = currentBalance * currentRate;
@@ -39,13 +38,6 @@ export function PortfolioCard({
     totalInvested > 0 ? (profitLoss / totalInvested) * 100 : 0;
 
   const isProfit = profitLoss >= 0;
-
-  // 브로커 라벨
-  const brokerLabel = {
-    HANA: "하나증권",
-    KIS: "한국투자증권",
-    MANUAL: "수동 입력",
-  }[broker] || broker;
 
   const currencyFlags: Record<string, string> = {
     USD: "🇺🇸",
@@ -66,7 +58,7 @@ export function PortfolioCard({
             </div>
           </div>
           <span className="text-xs text-muted-foreground px-2 py-1 bg-gray-100 rounded-lg">
-            {brokerLabel}
+            {currency}
           </span>
         </div>
       </CardHeader>
