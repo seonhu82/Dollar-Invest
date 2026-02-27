@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const currenciesParam = searchParams.get("currencies");
 
-    let currencies: string[] = ["USD", "EUR", "JPY"];
+    let currencies: string[] = ["USD", "JPY", "EUR", "GBP", "CNY"];
 
     if (currenciesParam) {
       // 명시적으로 통화 지정 시 해당 통화만 분석

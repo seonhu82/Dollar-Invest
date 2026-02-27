@@ -54,7 +54,7 @@ export default function DashboardPage() {
   const fetchRates = async () => {
     setLoading(true);
     try {
-      const currencies = ["USD", "EUR", "GBP", "JPY", "CNY"];
+      const currencies = ["USD", "JPY", "EUR", "GBP", "CNY"];
       const results = await Promise.all(
         currencies.map(async (cur) => {
           const res = await fetch(`/api/exchange/history?currency=${cur}&days=7`);
@@ -140,7 +140,7 @@ export default function DashboardPage() {
     totalInvested > 0 ? (totalProfitLoss / totalInvested) * 100 : 0;
 
   // 달러 유로 파운드 엔화 위안 순으로 표시
-  const currencyOrder = ["USD", "EUR", "GBP", "JPY", "CNY"];
+  const currencyOrder = ["USD", "JPY", "EUR", "GBP", "CNY"];
   const mainRates = currencyOrder
     .map((cur) => rates.find((r) => r.currency === cur))
     .filter((r): r is ExchangeRate => r != null);

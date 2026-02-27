@@ -257,10 +257,10 @@ export const TIER_INFO: Record<SignalTier, TierInfo> = {
   },
   BUY: {
     label: "매수",
-    color: "bg-emerald-500",
-    bgColor: "bg-emerald-50/90",
-    borderColor: "border-emerald-200/80",
-    textColor: "text-emerald-700",
+    color: "bg-lime-500",
+    bgColor: "bg-lime-50/90",
+    borderColor: "border-lime-200/80",
+    textColor: "text-lime-700",
     description: "환율이 과매도 영역입니다. 외화 매수를 검토하세요.",
   },
   STRONG_BUY: {

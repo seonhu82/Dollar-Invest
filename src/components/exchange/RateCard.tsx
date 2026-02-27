@@ -8,8 +8,8 @@ import { cn } from "@/lib/utils";
 type SignalTier = "STRONG_SELL" | "SELL" | "NEUTRAL" | "WATCH" | "BUY" | "STRONG_BUY";
 
 const TIER_BADGE_STYLES: Record<SignalTier, string> = {
-  STRONG_BUY: "bg-emerald-600 text-white",
-  BUY: "bg-amber-500 text-white",
+  STRONG_BUY: "bg-green-600 text-white",
+  BUY: "bg-lime-500 text-white",
   WATCH: "bg-blue-500 text-white",
   NEUTRAL: "bg-gray-400 text-white",
   SELL: "bg-orange-500 text-white",

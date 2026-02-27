@@ -168,7 +168,7 @@ export default function AlertsPage() {
     }
   };
 
-  const currencies = ["USD", "EUR", "JPY", "CNY", "GBP"];
+  const currencies = ["USD", "JPY", "EUR", "GBP", "CNY"];
 
   return (
     <div className="min-h-screen bg-background">
