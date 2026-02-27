@@ -695,12 +695,81 @@ function getDefaultRates(): ExchangeRateData[] {
   ];
 }
 
-// 히스토리 캐시 (기간별, 10분)
-const historyCache = new Map<string, { data: { date: string; rate: number }[]; timestamp: number }>();
-const HISTORY_CACHE_DURATION = 10 * 60 * 1000; // 10분
+// 히스토리 캐시 (통화별 전체 데이터, 30분)
+const historyFullCache = new Map<string, { data: { date: string; rate: number }[]; timestamp: number; maxDays: number }>();
+const HISTORY_CACHE_DURATION = 30 * 60 * 1000; // 30분
 
 /**
- * Frankfurter API에서 환율 히스토리 조회 (단일 호출로 전체 기간)
+ * Twelve Data time_series API에서 일봉 히스토리 조회
+ * https://twelvedata.com/docs#time-series
+ * 외환시장 실거래 데이터 (TradingView와 동일 소스)
+ * 무료: 800 API 크레딧/일, 8 크레딧/분, 1 호출 = 1 크레딧
+ */
+async function fetchHistoryFromTwelveData(
+  currency: string,
+  days: number
+): Promise<{ date: string; rate: number }[] | null> {
+  const apiKey = process.env.TWELVE_DATA_API_KEY;
+  if (!apiKey) {
+    console.log("Twelve Data API 키가 설정되지 않았습니다 (히스토리).");
+    return null;
+  }
+
+  try {
+    const symbol = `${currency}/KRW`;
+    const outputsize = Math.min(days + 15, 500); // 공휴일 감안 여유분
+
+    const url = `https://api.twelvedata.com/time_series?symbol=${symbol}&interval=1day&outputsize=${outputsize}&apikey=${apiKey}`;
+
+    const response = await fetch(url, {
+      signal: AbortSignal.timeout(15000),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      console.error(`Twelve Data time_series HTTP ${response.status} (${currency})`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    // 에러 응답 처리
+    if (data.code && data.status === "error") {
+      console.error(`Twelve Data time_series 오류 (${currency}):`, data.message);
+      return null;
+    }
+
+    if (!data.values || !Array.isArray(data.values) || data.values.length === 0) {
+      return null;
+    }
+
+    const results: { date: string; rate: number }[] = [];
+
+    for (const item of data.values) {
+      const rate = parseFloat(item.close);
+      if (!rate || isNaN(rate)) continue;
+      results.push({
+        date: item.datetime.split(" ")[0], // "2026-02-27" 형식 통일
+        rate: Math.round(rate * 100) / 100,
+      });
+    }
+
+    // Twelve Data는 최신→과거 순이므로 오름차순 정렬
+    results.sort((a, b) => a.date.localeCompare(b.date));
+
+    if (results.length > 0) {
+      console.log(`Twelve Data time_series: ${currency} ${results.length}일 히스토리 조회 성공`);
+    }
+
+    return results;
+  } catch (error) {
+    console.error(`Twelve Data time_series 오류 (${currency}):`, error);
+    return null;
+  }
+}
+
+/**
+ * Frankfurter API에서 환율 히스토리 조회 (ECB 참고환율, fallback용)
  * https://frankfurter.app/
  * 무료, API 키 불필요, 날짜 범위 지원
  */
@@ -716,9 +785,6 @@ async function fetchHistoryFromFrankfurter(
     const startStr = startDate.toISOString().split("T")[0];
     const endStr = endDate.toISOString().split("T")[0];
 
-    // Frankfurter는 KRW를 직접 지원
-    // USD/KRW 조회: from=USD&to=KRW
-    // EUR/KRW 조회: from=EUR&to=KRW
     const url = `https://api.frankfurter.app/${startStr}..${endStr}?from=${currency}&to=KRW`;
 
     const response = await fetch(url, {
@@ -741,7 +807,6 @@ async function fetchHistoryFromFrankfurter(
     for (const [date, rates] of Object.entries(data.rates)) {
       const rateValue = (rates as Record<string, number>).KRW;
       if (rateValue) {
-        // JPY는 Frankfurter가 1 JPY = X KRW로 제공하므로 변환 불필요
         results.push({ date, rate: Math.round(rateValue * 100) / 100 });
       }
     }
@@ -788,34 +853,53 @@ async function fetchHistoryFromExchangeRateAPI(
 }
 
 /**
- * 환율 히스토리 조회 (Frankfurter API + DB 보완)
- * 기존 한국수출입은행 per-day 호출 방식 대비 API 사용량 대폭 감소
+ * 환율 히스토리 조회 (Twelve Data → Frankfurter → DB → ExchangeRate-API)
+ *
+ * 1차: Twelve Data time_series - 외환시장 일봉 데이터 (TradingView와 일치)
+ * 2차: Frankfurter API - ECB 참고환율 (Twelve Data 실패 시)
+ * 3차: DB 보완
+ * 4차: ExchangeRate-API (최후 수단)
+ *
+ * 통화별 전체 데이터를 30분간 캐시하고, 요청 기간에 맞게 잘라서 반환
  */
 export async function getExchangeRateHistory(
   currency: string,
   days: number = 30
 ): Promise<{ date: string; rate: number }[]> {
-  // 캐시 확인
-  const cacheKey = `${currency}_${days}`;
-  const cached = historyCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < HISTORY_CACHE_DURATION) {
-    return cached.data;
+  // 캐시 확인: 이미 같은 통화의 캐시가 있고, 요청 기간보다 많으면 슬라이스
+  const cached = historyFullCache.get(currency);
+  if (cached && Date.now() - cached.timestamp < HISTORY_CACHE_DURATION && cached.maxDays >= days) {
+    return sliceHistoryByDays(cached.data, days);
   }
 
+  // 요청 기간이 캐시보다 크면 새로 fetch
+  const fetchDays = Math.max(days, 120); // MA50 등 기술분석 위해 최소 120일
   const dailyRates = new Map<string, number>();
 
-  // 1차: Frankfurter API (단일 호출로 전체 기간 조회)
-  const frankfurterData = await fetchHistoryFromFrankfurter(currency, days);
-  if (frankfurterData && frankfurterData.length > 0) {
-    for (const item of frankfurterData) {
+  // 1차: Twelve Data time_series (외환시장 실거래 데이터)
+  const twelveData = await fetchHistoryFromTwelveData(currency, fetchDays);
+  if (twelveData && twelveData.length > 0) {
+    for (const item of twelveData) {
       dailyRates.set(item.date, item.rate);
     }
   }
 
-  // 2차: DB에서 추가 데이터 보완
+  // 2차: Frankfurter API (Twelve Data 실패 또는 부족 시 보완)
+  if (dailyRates.size < 20) {
+    const frankfurterData = await fetchHistoryFromFrankfurter(currency, fetchDays);
+    if (frankfurterData && frankfurterData.length > 0) {
+      for (const item of frankfurterData) {
+        if (!dailyRates.has(item.date)) {
+          dailyRates.set(item.date, item.rate);
+        }
+      }
+    }
+  }
+
+  // 3차: DB에서 추가 데이터 보완
   try {
     const startDate = new Date();
-    startDate.setDate(startDate.getDate() - days);
+    startDate.setDate(startDate.getDate() - fetchDays);
 
     const dbRates = await prisma.exchangeRate.findMany({
       where: {
@@ -839,9 +923,9 @@ export async function getExchangeRateHistory(
     // DB 오류 무시
   }
 
-  // 3차: 데이터가 없으면 ExchangeRate-API fallback
+  // 4차: 데이터가 없으면 ExchangeRate-API fallback
   if (dailyRates.size === 0) {
-    const fallbackData = await fetchHistoryFromExchangeRateAPI(currency, days);
+    const fallbackData = await fetchHistoryFromExchangeRateAPI(currency, fetchDays);
     if (fallbackData) {
       for (const item of fallbackData) {
         dailyRates.set(item.date, item.rate);
@@ -849,12 +933,20 @@ export async function getExchangeRateHistory(
     }
   }
 
-  const result = Array.from(dailyRates.entries())
+  const fullResult = Array.from(dailyRates.entries())
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([date, rate]) => ({ date, rate }));
 
-  // 캐시 저장
-  historyCache.set(cacheKey, { data: result, timestamp: Date.now() });
+  // 전체 캐시 저장 (통화당 1개)
+  historyFullCache.set(currency, { data: fullResult, timestamp: Date.now(), maxDays: fetchDays });
 
-  return result;
+  return sliceHistoryByDays(fullResult, days);
+}
+
+/** 히스토리 데이터를 요청 일수에 맞게 최근 N일만 반환 */
+function sliceHistoryByDays(data: { date: string; rate: number }[], days: number): { date: string; rate: number }[] {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days - 1);
+  const cutoff = cutoffDate.toISOString().split("T")[0];
+  return data.filter((d) => d.date >= cutoff);
 }

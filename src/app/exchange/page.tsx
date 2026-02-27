@@ -440,6 +440,105 @@ function AnalysisSection({ report }: { report: AlertReport }) {
         </CardContent>
       </Card>
 
+      {/* 점수 기준표 */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-1.5">
+            <BarChart3 className="h-4 w-4 text-gray-500" />
+            점수 기준표
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* 배점 체계 */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">배점 체계 (총 ±100점)</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { label: "추세 (MA50)", points: "±30", desc: "50일 이평선 대비 위치" },
+                { label: "모멘텀 (CCI)", points: "±25", desc: "상품채널지수 20일" },
+                { label: "강도 (RSI)", points: "±25", desc: "상대강도지수 14일" },
+                { label: "변동성 (BB)", points: "±20", desc: "볼린저밴드 20일" },
+              ].map((item) => (
+                <div key={item.label} className="p-2.5 bg-gray-50 rounded-lg text-center">
+                  <p className="text-xs font-semibold text-gray-800">{item.label}</p>
+                  <p className="text-lg font-bold tabular-nums text-gray-900">{item.points}</p>
+                  <p className="text-[10px] text-gray-500">{item.desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 등급 기준 */}
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-2">등급 판정 기준</p>
+            <div className="rounded-lg border border-gray-200 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50/80">
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500">등급</th>
+                    <th className="text-center px-3 py-1.5 font-medium text-gray-500">점수 범위</th>
+                    <th className="text-left px-3 py-1.5 font-medium text-gray-500">의미</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {[
+                    { tier: "STRONG_BUY" as SignalTier, label: "적극 매수", range: "55점 초과", desc: "대부분 지표가 매수 신호" },
+                    { tier: "BUY" as SignalTier, label: "매수", range: "25 ~ 55점", desc: "2~3개 지표 매수 방향" },
+                    { tier: "WATCH" as SignalTier, label: "관심", range: "5 ~ 25점", desc: "약한 매수 신호, 모니터링" },
+                    { tier: "NEUTRAL" as SignalTier, label: "관망", range: "-15 ~ 5점", desc: "방향성 없음" },
+                    { tier: "SELL" as SignalTier, label: "매도", range: "-45 ~ -15점", desc: "2~3개 지표 매도 방향" },
+                    { tier: "STRONG_SELL" as SignalTier, label: "적극 매도", range: "-45점 이하", desc: "대부분 지표가 매도 신호" },
+                  ].map((row) => (
+                    <tr key={row.tier} className={report.tier === row.tier ? "bg-gray-100/80" : "hover:bg-gray-50/50"}>
+                      <td className="px-3 py-2">
+                        <span className={cn(
+                          "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold",
+                          TIER_BADGE[row.tier]
+                        )}>
+                          {row.label}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center tabular-nums font-medium text-gray-700">{row.range}</td>
+                      <td className="px-3 py-2 text-gray-600">{row.desc}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* 현재 통화 임계값 */}
+          {report.config && (
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">
+                {CURRENCY_INFO[report.currency]?.koreanName || report.currency} 통화별 임계값
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div className="p-2 bg-blue-50 rounded-lg">
+                  <p className="text-[10px] text-blue-600">CCI 과매도</p>
+                  <p className="text-sm font-bold tabular-nums text-blue-800">{report.config.cciOversold}</p>
+                </div>
+                <div className="p-2 bg-red-50 rounded-lg">
+                  <p className="text-[10px] text-red-600">CCI 과매수</p>
+                  <p className="text-sm font-bold tabular-nums text-red-800">{report.config.cciOverbought}</p>
+                </div>
+                <div className="p-2 bg-blue-50 rounded-lg">
+                  <p className="text-[10px] text-blue-600">RSI 과매도</p>
+                  <p className="text-sm font-bold tabular-nums text-blue-800">{report.config.rsiOversold}</p>
+                </div>
+                <div className="p-2 bg-red-50 rounded-lg">
+                  <p className="text-[10px] text-red-600">RSI 과매수</p>
+                  <p className="text-sm font-bold tabular-nums text-red-800">{report.config.rsiOverbought}</p>
+                </div>
+              </div>
+              <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">
+                {report.config.description}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* 종합 판단 */}
       {report.summary && (
         <Card>
