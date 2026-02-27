@@ -6,9 +6,16 @@ import { ExchangeChart } from "@/components/exchange/ExchangeChart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { formatRate, formatKRW, getDisplayRate, getRateUnit } from "@/lib/utils";
 import { RefreshCw, Calculator, ArrowUpDown } from "lucide-react";
+
+interface AlertInfo {
+  currency: string;
+  tier: string;
+  tierLabel: string;
+  score: number;
+}
 
 interface ExchangeRate {
   currency: string;
@@ -33,6 +40,7 @@ export default function ExchangePage() {
   const [rates, setRates] = useState<ExchangeRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [alertMap, setAlertMap] = useState<Record<string, AlertInfo>>({});
 
   // 환율 계산기 상태
   const [calcCurrency, setCalcCurrency] = useState("USD");
@@ -55,12 +63,29 @@ export default function ExchangePage() {
     }
   };
 
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/exchange-alert/status");
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.alerts) {
+        const map: Record<string, AlertInfo> = {};
+        for (const a of data.alerts) {
+          map[a.currency] = { currency: a.currency, tier: a.tier, tierLabel: a.tierLabel, score: a.score };
+        }
+        setAlertMap(map);
+      }
+    } catch {
+      // 실패 시 무시
+    }
+  }, []);
+
   useEffect(() => {
     fetchRates();
-    // 30초마다 자동 새로고침
+    fetchAlerts();
     const interval = setInterval(fetchRates, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchAlerts]);
 
   // 환율 계산
   const selectedRate = rates.find((r) => r.currency === calcCurrency)?.rate || 0;
@@ -133,6 +158,7 @@ export default function ExchangePage() {
               changePercent={rate.changePercent}
               high={rate.high}
               low={rate.low}
+              alert={alertMap[rate.currency]}
             />
           ))}
         </div>

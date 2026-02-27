@@ -14,6 +14,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  ChevronLeft,
   ChevronRight,
   Activity,
   BarChart3,
@@ -472,31 +473,50 @@ export function ExchangeAlertBanner() {
               </span>
             </div>
 
-            {/* 우: 상세보기 + 로테이션 도트 */}
-            <div className="flex items-center gap-2.5 shrink-0">
+            {/* 우: 네비게이션 + 상세보기 */}
+            <div className="flex items-center gap-1.5 shrink-0">
               {alerts.length > 1 && (
-                <div className="hidden sm:flex items-center gap-1">
-                  {alerts.map((_, i) => (
-                    <button
-                      key={i}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCurrentIndex(i);
-                      }}
-                      className={cn(
-                        "h-1.5 rounded-full transition-all duration-300",
-                        i === currentIndex % alerts.length
-                          ? "bg-gray-600 w-3"
-                          : "bg-gray-300 hover:bg-gray-400 w-1.5"
-                      )}
-                    />
-                  ))}
-                </div>
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCurrentIndex((prev) => (prev - 1 + alerts.length) % alerts.length);
+                    }}
+                    className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-gray-400 hover:text-gray-600"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
+                  <div className="hidden sm:flex items-center gap-1">
+                    {alerts.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCurrentIndex(i);
+                        }}
+                        className={cn(
+                          "h-1.5 rounded-full transition-all duration-300",
+                          i === currentIndex % alerts.length
+                            ? "bg-gray-600 w-3"
+                            : "bg-gray-300 hover:bg-gray-400 w-1.5"
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCurrentIndex((prev) => (prev + 1) % alerts.length);
+                    }}
+                    className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-gray-400 hover:text-gray-600"
+                  >
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </button>
+                </>
               )}
 
-              <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors flex items-center gap-0.5">
+              <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors flex items-center gap-0.5 ml-1">
                 <BarChart3 className="h-3.5 w-3.5" />
-                <ChevronRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
               </span>
             </div>
           </button>
@@ -587,7 +607,7 @@ function ReportContent({ report }: { report: AlertReport }) {
               <div
                 className="absolute top-[-2px] w-3 h-3 rounded-full bg-white border-2 border-gray-800 shadow-md transition-all duration-500"
                 style={{
-                  left: `${Math.max(2, Math.min(97, ((report.score + 100) / 200) * 100))}%`,
+                  left: `${Math.max(2, Math.min(97, ((-report.score + 100) / 200) * 100))}%`,
                   transform: "translateX(-50%)",
                 }}
               />

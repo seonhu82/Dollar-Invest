@@ -5,6 +5,23 @@ import { formatRate, formatPercent, getDisplayRate } from "@/lib/utils";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+type SignalTier = "STRONG_SELL" | "SELL" | "NEUTRAL" | "WATCH" | "BUY" | "STRONG_BUY";
+
+const TIER_BADGE_STYLES: Record<SignalTier, string> = {
+  STRONG_BUY: "bg-emerald-600 text-white",
+  BUY: "bg-amber-500 text-white",
+  WATCH: "bg-blue-500 text-white",
+  NEUTRAL: "bg-gray-400 text-white",
+  SELL: "bg-orange-500 text-white",
+  STRONG_SELL: "bg-red-600 text-white",
+};
+
+interface AlertInfo {
+  tier: string;
+  tierLabel: string;
+  score: number;
+}
+
 interface RateCardProps {
   currency: string;
   currencyName: string;
@@ -13,6 +30,7 @@ interface RateCardProps {
   changePercent: number;
   high?: number;
   low?: number;
+  alert?: AlertInfo;
 }
 
 export function RateCard({
@@ -23,16 +41,17 @@ export function RateCard({
   changePercent,
   high,
   low,
+  alert,
 }: RateCardProps) {
   const isPositive = change > 0;
   const isNegative = change < 0;
 
   const currencyFlags: Record<string, string> = {
-    USD: "🇺🇸",
-    EUR: "🇪🇺",
-    JPY: "🇯🇵",
-    CNY: "🇨🇳",
-    GBP: "🇬🇧",
+    USD: "\u{1F1FA}\u{1F1F8}",
+    EUR: "\u{1F1EA}\u{1F1FA}",
+    JPY: "\u{1F1EF}\u{1F1F5}",
+    CNY: "\u{1F1E8}\u{1F1F3}",
+    GBP: "\u{1F1EC}\u{1F1E7}",
   };
 
   const isJPY = currency === "JPY";
@@ -93,6 +112,19 @@ export function RateCard({
                 <span className="font-medium text-gray-700">{formatRate(displayLow)}</span>
               </div>
             )}
+          </div>
+        )}
+        {alert && (
+          <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+            <span className={cn(
+              "inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold",
+              TIER_BADGE_STYLES[alert.tier as SignalTier] || "bg-gray-400 text-white"
+            )}>
+              {alert.tierLabel}
+            </span>
+            <span className="text-[10px] text-muted-foreground tabular-nums">
+              {alert.score > 0 ? "+" : ""}{alert.score}점
+            </span>
           </div>
         )}
       </CardContent>
