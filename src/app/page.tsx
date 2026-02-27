@@ -54,10 +54,31 @@ export default function DashboardPage() {
   const fetchRates = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/exchange/rates");
-      const data = await res.json();
-      if (data.rates) {
-        setRates(data.rates);
+      const currencies = ["USD", "EUR", "GBP", "JPY", "CNY"];
+      const results = await Promise.all(
+        currencies.map(async (cur) => {
+          const res = await fetch(`/api/exchange/history?currency=${cur}&days=7`);
+          const data = await res.json();
+          if (!data.history || data.history.length < 2) return null;
+          const hist: { date: string; rate: number }[] = data.history;
+          const current = hist[hist.length - 1];
+          const prev = hist[hist.length - 2];
+          const allRates = hist.map((h) => h.rate);
+          return {
+            currency: cur,
+            currencyName: "KRW",
+            rate: current.rate,
+            change: current.rate - prev.rate,
+            changePercent: ((current.rate - prev.rate) / prev.rate) * 100,
+            high: Math.max(...allRates),
+            low: Math.min(...allRates),
+            timestamp: current.date,
+          };
+        })
+      );
+      const valid = results.filter((r): r is ExchangeRate => r !== null);
+      if (valid.length > 0) {
+        setRates(valid);
       }
     } catch (error) {
       console.error("Failed to fetch rates:", error);
@@ -118,8 +139,11 @@ export default function DashboardPage() {
   const totalProfitPercent =
     totalInvested > 0 ? (totalProfitLoss / totalInvested) * 100 : 0;
 
-  // 주요 통화만 표시 (USD, EUR, JPY)
-  const mainRates = rates.filter((r) => ["USD", "EUR", "JPY"].includes(r.currency));
+  // 달러 유로 파운드 엔화 위안 순으로 표시
+  const currencyOrder = ["USD", "EUR", "GBP", "JPY", "CNY"];
+  const mainRates = currencyOrder
+    .map((cur) => rates.find((r) => r.currency === cur))
+    .filter((r): r is ExchangeRate => r !== null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -233,7 +257,7 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
-          <div className="grid gap-4 grid-cols-2 md:grid-cols-3">
+          <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
             {mainRates.length > 0 ? (
               mainRates.map((rate) => (
                 <RateCard
@@ -249,7 +273,7 @@ export default function DashboardPage() {
               ))
             ) : (
               // 로딩 스켈레톤
-              [...Array(3)].map((_, i) => (
+              [...Array(5)].map((_, i) => (
                 <Card key={i} className="animate-pulse">
                   <CardHeader className="pb-3">
                     <div className="h-6 bg-gray-200 rounded w-20" />

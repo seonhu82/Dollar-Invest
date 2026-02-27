@@ -113,14 +113,34 @@ export default function ExchangePage() {
   const [calcAmount, setCalcAmount] = useState("");
   const [calcDirection, setCalcDirection] = useState<"toKRW" | "fromKRW">("toKRW");
 
+  // 차트와 동일한 히스토리 데이터 소스로 환율 카드 표시
   const fetchRates = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/exchange/rates?realtime=true");
-      const data = await res.json();
-      if (data.rates) {
-        setRates(data.rates);
-        setLastUpdated(data.updatedAt);
+      const results = await Promise.all(
+        ALL_CURRENCIES.map(async (cur) => {
+          const res = await fetch(`/api/exchange/history?currency=${cur}&days=7`);
+          const data = await res.json();
+          if (!data.history || data.history.length < 2) return null;
+          const hist: { date: string; rate: number }[] = data.history;
+          const current = hist[hist.length - 1];
+          const prev = hist[hist.length - 2];
+          const allRates = hist.map((h) => h.rate);
+          return {
+            currency: cur,
+            rate: current.rate,
+            change: current.rate - prev.rate,
+            changePercent: ((current.rate - prev.rate) / prev.rate) * 100,
+            high: Math.max(...allRates),
+            low: Math.min(...allRates),
+            timestamp: current.date,
+          };
+        })
+      );
+      const valid = results.filter((r): r is ExchangeRate => r !== null);
+      if (valid.length > 0) {
+        setRates(valid);
+        setLastUpdated(new Date().toISOString());
       }
     } catch (error) {
       console.error("Failed to fetch rates:", error);
