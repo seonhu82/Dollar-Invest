@@ -4,8 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import { createChart, ColorType, IChartApi, ISeriesApi, AreaData, Time, AreaSeries } from "lightweight-charts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, ExternalLink } from "lucide-react";
 import { getDisplayRate, getRateUnit } from "@/lib/utils";
+
+const TV_SYMBOLS: Record<string, string> = {
+  USD: "FX_IDC:USDKRW",
+  EUR: "FX_IDC:EURKRW",
+  JPY: "FX_IDC:JPYKRW",
+  GBP: "FX_IDC:GBPKRW",
+  CNY: "FX_IDC:CNYKRW",
+};
 
 interface HistoryData {
   date: string;
@@ -190,7 +198,17 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
       <CardHeader className="pb-3">
         {/* 타이틀 + 기간 버튼: 모바일에서 세로 정렬 */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <CardTitle className="text-base sm:text-lg">{getRateUnit(currency)}/KRW 차트</CardTitle>
+          <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+            {getRateUnit(currency)}/KRW 차트
+            <a
+              href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(TV_SYMBOLS[currency] || TV_SYMBOLS.USD)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-normal text-blue-500 hover:text-blue-700 transition-colors"
+            >
+              TradingView <ExternalLink className="h-3 w-3" />
+            </a>
+          </CardTitle>
           <div className="flex gap-1 flex-wrap">
             {PERIODS.map((period) => (
               <Button
