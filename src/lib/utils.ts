@@ -38,6 +38,21 @@ export function formatRate(rate: number | string): string {
   }).format(num);
 }
 
+// JPY 표시용 환율 (한국 관행: 100엔당 원)
+export function getDisplayRate(currency: string, rate: number): number {
+  return currency === "JPY" ? Math.round(rate * 100 * 100) / 100 : rate;
+}
+
+// 표시 환율 → 내부 환율 (JPY: 100엔당 → 1엔당)
+export function getInternalRate(currency: string, displayRate: number): number {
+  return currency === "JPY" ? displayRate / 100 : displayRate;
+}
+
+// 환율 단위 라벨 (JPY는 100엔당)
+export function getRateUnit(currency: string): string {
+  return currency === "JPY" ? "100JPY" : currency;
+}
+
 // 퍼센트 포맷팅
 export function formatPercent(value: number | string): string {
   const num = typeof value === "string" ? parseFloat(value) : value;

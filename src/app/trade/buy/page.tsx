@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { formatKRW, formatRate } from "@/lib/utils";
+import { formatKRW, formatRate, getDisplayRate, getInternalRate, getRateUnit } from "@/lib/utils";
 import { ArrowLeft, Info, AlertCircle, Check, RefreshCw } from "lucide-react";
 import Link from "next/link";
 
@@ -109,7 +109,10 @@ function BuyForm() {
   const selectedPortfolio = portfolios.find((p) => p.id === portfolioId);
   const currency = selectedPortfolio?.currency || "USD";
   const currentRate = rates.find((r) => r.currency === currency)?.rate || 0;
-  const effectiveRate = useCustomRate ? parseFloat(customRate) || 0 : currentRate;
+  // 사용자 입력 환율은 표시 단위(JPY: 100엔당)로 입력 → 내부 단위(1엔당)로 변환
+  const effectiveRate = useCustomRate
+    ? getInternalRate(currency, parseFloat(customRate) || 0)
+    : currentRate;
 
   const amountNum = parseFloat(amount) || 0;
   const feeNum = parseFloat(fee) || 0;
@@ -140,7 +143,7 @@ function BuyForm() {
           setRates(freshData.rates);
           setRateUpdatedAt(new Date());
           setError(
-            `환율이 변동되었습니다 (${formatRate(effectiveRate)} → ${formatRate(freshRate)}원). 새 환율을 확인 후 다시 시도해주세요.`
+            `환율이 변동되었습니다 (${formatRate(getDisplayRate(currency, effectiveRate))} → ${formatRate(getDisplayRate(currency, freshRate))}원/${getRateUnit(currency)}). 새 환율을 확인 후 다시 시도해주세요.`
           );
           setIsSubmitting(false);
           return;
@@ -311,7 +314,7 @@ function BuyForm() {
                 step="0.01"
               />
               <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                원/{currency}
+                원/{getRateUnit(currency)}
               </span>
             </div>
           ) : (
@@ -324,8 +327,8 @@ function BuyForm() {
                   </span>
                   <span className="text-sm">
                     실시간 환율:{" "}
-                    <strong className="tabular-nums text-base">{formatRate(currentRate)}</strong>{" "}
-                    원/{currency}
+                    <strong className="tabular-nums text-base">{formatRate(getDisplayRate(currency, currentRate))}</strong>{" "}
+                    원/{getRateUnit(currency)}
                   </span>
                 </div>
                 <Button

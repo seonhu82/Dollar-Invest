@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect } from "react";
-import { formatRate, formatKRW } from "@/lib/utils";
+import { formatRate, formatKRW, getDisplayRate, getRateUnit } from "@/lib/utils";
 import { RefreshCw, Calculator, ArrowUpDown } from "lucide-react";
 
 interface ExchangeRate {
@@ -243,7 +243,7 @@ export default function ExchangePage() {
             <div className="mt-4 pt-4 border-t flex items-center justify-center gap-2 text-sm text-muted-foreground">
               <span>적용 환율:</span>
               <span className="font-medium text-foreground">
-                1 {calcCurrency} = {formatRate(selectedRate)} KRW
+                {calcCurrency === "JPY" ? "100" : "1"} {calcCurrency} = {formatRate(getDisplayRate(calcCurrency, selectedRate))} KRW
               </span>
             </div>
           </CardContent>

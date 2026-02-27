@@ -5,6 +5,7 @@ import { createChart, ColorType, IChartApi, ISeriesApi, AreaData, Time, AreaSeri
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { getDisplayRate, getRateUnit } from "@/lib/utils";
 
 interface HistoryData {
   date: string;
@@ -61,20 +62,20 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
         return;
       }
 
-      // 차트 데이터 변환
+      // 차트 데이터 변환 (JPY는 100엔당으로 표시)
       const chartData: AreaData<Time>[] = history.map((item) => ({
         time: item.date as Time,
-        value: item.rate,
+        value: getDisplayRate(currency, item.rate),
       }));
 
-      // 통계 계산
-      const rates = history.map((h) => h.rate);
-      const current = rates[rates.length - 1];
-      const first = rates[0];
+      // 통계 계산 (JPY는 100엔당으로 표시)
+      const displayRates = history.map((h) => getDisplayRate(currency, h.rate));
+      const current = displayRates[displayRates.length - 1];
+      const first = displayRates[0];
       const change = current - first;
       const changePercent = (change / first) * 100;
-      const high = Math.max(...rates);
-      const low = Math.min(...rates);
+      const high = Math.max(...displayRates);
+      const low = Math.min(...displayRates);
 
       setStats({ current, change, changePercent, high, low });
 
@@ -189,7 +190,7 @@ export function ExchangeChart({ currency = "USD", className }: ExchangeChartProp
       <CardHeader className="pb-3">
         {/* 타이틀 + 기간 버튼: 모바일에서 세로 정렬 */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <CardTitle className="text-base sm:text-lg">{currency}/KRW 차트</CardTitle>
+          <CardTitle className="text-base sm:text-lg">{getRateUnit(currency)}/KRW 차트</CardTitle>
           <div className="flex gap-1 flex-wrap">
             {PERIODS.map((period) => (
               <Button

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState, useEffect } from "react";
-import { formatRate, formatDateTime } from "@/lib/utils";
+import { formatRate, formatDateTime, getDisplayRate, getInternalRate, getRateUnit } from "@/lib/utils";
 import {
   Bell,
   Plus,
@@ -100,7 +100,7 @@ export default function AlertsPage() {
       };
 
       if (newAlertType === "TARGET_RATE") {
-        body.targetRate = parseFloat(newTargetRate);
+        body.targetRate = getInternalRate(newCurrency, parseFloat(newTargetRate));
         body.direction = newDirection;
       } else if (newAlertType === "CHANGE_RATE") {
         body.changeRate = parseFloat(newChangeRate);
@@ -268,14 +268,14 @@ export default function AlertsPage() {
                     <div className="relative">
                       <Input
                         type="number"
-                        placeholder="1400"
+                        placeholder={newCurrency === "JPY" ? "920" : "1400"}
                         value={newTargetRate}
                         onChange={(e) => setNewTargetRate(e.target.value)}
-                        className="pr-12"
+                        className="pr-20"
                         step="0.1"
                       />
                       <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">
-                        원
+                        원/{getRateUnit(newCurrency)}
                       </span>
                     </div>
                   </div>
@@ -438,7 +438,7 @@ export default function AlertsPage() {
                                 {alert.currency}{" "}
                                 {alert.direction === "UP" ? "이상" : "이하"}{" "}
                                 <span className="tabular-nums">
-                                  {formatRate(alert.targetRate!)}원
+                                  {formatRate(getDisplayRate(alert.currency, alert.targetRate!))}원/{getRateUnit(alert.currency)}
                                 </span>
                               </>
                             )}
