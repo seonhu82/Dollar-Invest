@@ -14,28 +14,36 @@ export const maxDuration = 30;
  * 로그인 시: 사용자 포트폴리오의 관리 통화 분석
  * 비로그인 시: USD, EUR, JPY 기본 분석
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const currenciesParam = searchParams.get("currencies");
+
     let currencies: string[] = ["USD", "EUR", "JPY"];
 
-    // 로그인 사용자의 포트폴리오 통화 확인
-    try {
-      const session = await auth();
-      if (session?.user?.id) {
-        const portfolios = await prisma.portfolio.findMany({
-          where: { userId: session.user.id },
-          select: { currency: true },
-          distinct: ["currency"],
-        });
+    if (currenciesParam) {
+      // 명시적으로 통화 지정 시 해당 통화만 분석
+      currencies = currenciesParam.split(",").filter((c) => CURRENCY_CONFIGS[c]);
+    } else {
+      // 로그인 사용자의 포트폴리오 통화 확인
+      try {
+        const session = await auth();
+        if (session?.user?.id) {
+          const portfolios = await prisma.portfolio.findMany({
+            where: { userId: session.user.id },
+            select: { currency: true },
+            distinct: ["currency"],
+          });
 
-        if (portfolios.length > 0) {
-          currencies = portfolios
-            .map((p) => p.currency)
-            .filter((c) => CURRENCY_CONFIGS[c]);
+          if (portfolios.length > 0) {
+            currencies = portfolios
+              .map((p) => p.currency)
+              .filter((c) => CURRENCY_CONFIGS[c]);
+          }
         }
+      } catch {
+        // 인증 실패 시 기본 통화 사용
       }
-    } catch {
-      // 인증 실패 시 기본 통화 사용
     }
 
     const alerts = await analyzeStatus(currencies);

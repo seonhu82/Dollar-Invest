@@ -25,23 +25,29 @@ interface AlertInfo {
 interface RateCardProps {
   currency: string;
   currencyName: string;
+  koreanName?: string;
   rate: number;
   change: number;
   changePercent: number;
   high?: number;
   low?: number;
   alert?: AlertInfo;
+  selected?: boolean;
+  onClick?: () => void;
 }
 
 export function RateCard({
   currency,
   currencyName,
+  koreanName,
   rate,
   change,
   changePercent,
   high,
   low,
   alert,
+  selected,
+  onClick,
 }: RateCardProps) {
   const isPositive = change > 0;
   const isNegative = change < 0;
@@ -61,15 +67,24 @@ export function RateCard({
   const displayLow = low ? getDisplayRate(currency, low) : undefined;
 
   return (
-    <Card>
+    <Card
+      className={cn(
+        onClick && "cursor-pointer hover:shadow-md transition-shadow",
+        selected && "ring-2 ring-gray-900 shadow-md"
+      )}
+      onClick={onClick}
+    >
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
         <div className="flex items-center gap-2.5">
-          <span className="text-xl">{currencyFlags[currency] || "💱"}</span>
+          <span className="text-xl">{currencyFlags[currency] || "\u{1F4B1}"}</span>
           <div>
             <CardTitle className="text-sm font-semibold text-gray-900">
               {isJPY ? "JPY(100)" : currency}
             </CardTitle>
-            <p className="text-xs text-muted-foreground">{isJPY ? "100JPY" : currency}/{currencyName}</p>
+            <p className="text-[10px] text-muted-foreground leading-tight">
+              {koreanName && <span className="block">{koreanName}</span>}
+              {isJPY ? "100JPY" : currency}/{currencyName}
+            </p>
           </div>
         </div>
         {isPositive ? (
@@ -94,7 +109,7 @@ export function RateCard({
                 isNegative && "text-blue-500"
               )}
             >
-              {isPositive ? "▲" : isNegative ? "▼" : ""} {formatRate(Math.abs(displayChange))} ({formatPercent(changePercent)})
+              {isPositive ? "\u25B2" : isNegative ? "\u25BC" : ""} {formatRate(Math.abs(displayChange))} ({formatPercent(changePercent)})
             </span>
           </div>
         </div>

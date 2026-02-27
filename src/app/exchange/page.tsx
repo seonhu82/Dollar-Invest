@@ -27,20 +27,24 @@ interface ExchangeRate {
   timestamp: string;
 }
 
-const CURRENCY_INFO: Record<string, { name: string; flag: string }> = {
-  USD: { name: "미국 달러", flag: "\u{1F1FA}\u{1F1F8}" },
-  EUR: { name: "유로", flag: "\u{1F1EA}\u{1F1FA}" },
-  JPY: { name: "일본 엔", flag: "\u{1F1EF}\u{1F1F5}" },
-  CNY: { name: "중국 위안", flag: "\u{1F1E8}\u{1F1F3}" },
-  GBP: { name: "영국 파운드", flag: "\u{1F1EC}\u{1F1E7}" },
-  KRW: { name: "한국 원", flag: "\u{1F1F0}\u{1F1F7}" },
+const CURRENCY_INFO: Record<string, { name: string; koreanName: string; flag: string }> = {
+  USD: { name: "미국 달러", koreanName: "미국 달러", flag: "\u{1F1FA}\u{1F1F8}" },
+  EUR: { name: "유로", koreanName: "유로", flag: "\u{1F1EA}\u{1F1FA}" },
+  JPY: { name: "일본 엔", koreanName: "일본 엔", flag: "\u{1F1EF}\u{1F1F5}" },
+  CNY: { name: "중국 위안", koreanName: "중국 위안", flag: "\u{1F1E8}\u{1F1F3}" },
+  GBP: { name: "영국 파운드", koreanName: "영국 파운드", flag: "\u{1F1EC}\u{1F1E7}" },
+  KRW: { name: "한국 원", koreanName: "한국 원", flag: "\u{1F1F0}\u{1F1F7}" },
 };
+
+// 화면에 표시되는 전체 통화 목록
+const ALL_CURRENCIES = ["USD", "EUR", "JPY", "GBP", "CNY"];
 
 export default function ExchangePage() {
   const [rates, setRates] = useState<ExchangeRate[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [alertMap, setAlertMap] = useState<Record<string, AlertInfo>>({});
+  const [selectedCurrency, setSelectedCurrency] = useState("USD");
 
   // 환율 계산기 상태
   const [calcCurrency, setCalcCurrency] = useState("USD");
@@ -65,7 +69,7 @@ export default function ExchangePage() {
 
   const fetchAlerts = useCallback(async () => {
     try {
-      const res = await fetch("/api/exchange-alert/status");
+      const res = await fetch(`/api/exchange-alert/status?currencies=${ALL_CURRENCIES.join(",")}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.alerts) {
@@ -99,8 +103,8 @@ export default function ExchangePage() {
   // FROM/TO 통화 결정
   const fromCurrency = calcDirection === "toKRW" ? calcCurrency : "KRW";
   const toCurrency = calcDirection === "toKRW" ? "KRW" : calcCurrency;
-  const fromInfo = CURRENCY_INFO[fromCurrency] || { name: fromCurrency, flag: "" };
-  const toInfo = CURRENCY_INFO[toCurrency] || { name: toCurrency, flag: "" };
+  const fromInfo = CURRENCY_INFO[fromCurrency] || { name: fromCurrency, koreanName: fromCurrency, flag: "" };
+  const toInfo = CURRENCY_INFO[toCurrency] || { name: toCurrency, koreanName: toCurrency, flag: "" };
 
   // 스왑: 방향 전환 + 결과값을 입력값으로 이동
   const handleSwap = () => {
@@ -146,22 +150,31 @@ export default function ExchangePage() {
           </div>
         </div>
 
-        {/* 환율 카드 그리드 */}
+        {/* 환율 카드 그리드 - 클릭 시 해당 통화 차트 표시 */}
         <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-          {rates.map((rate) => (
-            <RateCard
-              key={rate.currency}
-              currency={rate.currency}
-              currencyName="KRW"
-              rate={rate.rate}
-              change={rate.change}
-              changePercent={rate.changePercent}
-              high={rate.high}
-              low={rate.low}
-              alert={alertMap[rate.currency]}
-            />
-          ))}
+          {rates.map((rate) => {
+            const info = CURRENCY_INFO[rate.currency];
+            return (
+              <RateCard
+                key={rate.currency}
+                currency={rate.currency}
+                currencyName="KRW"
+                koreanName={info?.koreanName}
+                rate={rate.rate}
+                change={rate.change}
+                changePercent={rate.changePercent}
+                high={rate.high}
+                low={rate.low}
+                alert={alertMap[rate.currency]}
+                selected={selectedCurrency === rate.currency}
+                onClick={() => setSelectedCurrency(rate.currency)}
+              />
+            );
+          })}
         </div>
+
+        {/* 선택된 통화의 환율 차트 */}
+        <ExchangeChart currency={selectedCurrency} key={selectedCurrency} />
 
         {/* 환율 계산기 */}
         <Card>
@@ -274,9 +287,6 @@ export default function ExchangePage() {
             </div>
           </CardContent>
         </Card>
-
-        {/* USD/KRW 환율 차트 */}
-        <ExchangeChart currency="USD" />
       </main>
     </div>
   );
