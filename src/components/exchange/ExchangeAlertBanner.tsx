@@ -26,9 +26,10 @@ import {
   Clock,
   ArrowUpRight,
   ArrowDownRight,
+  ExternalLink,
 } from "lucide-react";
 
-// ========== Types (서버 API 응답 매칭) ==========
+// ========== Types (엔진 API 응답 구조에 맞춤) ==========
 
 type SignalTier =
   | "STRONG_SELL"
@@ -38,62 +39,60 @@ type SignalTier =
   | "BUY"
   | "STRONG_BUY";
 
-interface IndicatorSignal {
-  signal: string;
-  passed: boolean;
-  detail: string;
-}
-
 interface AlertStatus {
   currency: string;
-  currencyLabel: string;
+  currencyName: string;
   tier: SignalTier;
   tierLabel: string;
   score: number;
   isActive: boolean;
-  indicators: {
-    cci: number;
-    rsi: number;
-    bbUpper: number;
-    bbMiddle: number;
-    bbLower: number;
-    bbPercB: number;
-    ma50: number;
-    ma20: number;
-    currentRate: number;
-    previousClose: number;
-  };
+  currentRate: number;
+  previousClose: number;
   changePercent: number;
-  signals: {
-    trendFilter: IndicatorSignal;
-    cci: IndicatorSignal;
-    rsi: IndicatorSignal;
-    bb: IndicatorSignal;
-    maCross: IndicatorSignal;
-  };
-  characteristics: string;
+  cci: number;
+  rsi: number;
+  bbUpper: number;
+  bbMiddle: number;
+  bbLower: number;
+  bbPercent: number;
+  ma50: number;
+  ma20: number;
   lastCheckedAt: string;
+  scoreBreakdown: {
+    trend: number;
+    momentum: number;
+    strength: number;
+    volatility: number;
+  };
 }
 
 interface RecentCandle {
   date: string;
-  close: number;
+  rate: number;
   cci: number;
   rsi: number;
-  bbPercB: number;
+  bbPercent: number;
   bbPos: string;
+  ma50: number;
 }
 
 interface AlertReport extends AlertStatus {
   recentCandles: RecentCandle[];
   summary: {
-    daysAboveMA50: number;
-    daysBelowMA50: number;
+    daysBelow50MA: number;
     low20D: number;
     high20D: number;
     bbWidthPct: number;
     trendDir: string;
     analysis: string;
+  };
+  config: {
+    name: string;
+    description: string;
+    cciOversold: number;
+    cciOverbought: number;
+    rsiOversold: number;
+    rsiOverbought: number;
   };
 }
 
@@ -170,6 +169,15 @@ const CURRENCY_ICONS: Record<string, string> = {
   CNY: "\u00a5",
 };
 
+// TradingView 심볼 매핑
+const TV_SYMBOLS: Record<string, string> = {
+  USD: "FX_IDC:USDKRW",
+  EUR: "FX_IDC:EURKRW",
+  JPY: "FX_IDC:JPYKRW",
+  GBP: "FX_IDC:GBPKRW",
+  CNY: "FX_IDC:CNYKRW",
+};
+
 // ========== 포맷팅 ==========
 
 function formatRateDisplay(currency: string, rate: number): string {
@@ -178,6 +186,88 @@ function formatRateDisplay(currency: string, rate: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(displayRate);
+}
+
+// ========== 지표 신호 도출 ==========
+
+function deriveSignals(report: AlertReport) {
+  const { cci, rsi, bbPercent, currentRate, ma50, ma20, scoreBreakdown, config } = report;
+  const pctFromMA = ma50 > 0 ? ((currentRate - ma50) / ma50) * 100 : 0;
+
+  return [
+    {
+      label: "추세 (MA50)",
+      value: `${pctFromMA >= 0 ? "+" : ""}${pctFromMA.toFixed(2)}%`,
+      signal: currentRate < ma50 ? "MA50 하회 (매수 유리)" : "MA50 상회 (매도 유리)",
+      passed: scoreBreakdown.trend > 0,
+    },
+    {
+      label: "CCI(20)",
+      value: cci.toFixed(1),
+      signal:
+        cci <= config.cciOversold ? "과매도 영역" :
+        cci >= config.cciOverbought ? "과매수 영역" : "중립 영역",
+      passed: scoreBreakdown.momentum > 0,
+    },
+    {
+      label: "RSI(14)",
+      value: rsi.toFixed(1),
+      signal:
+        rsi <= config.rsiOversold ? "과매도 영역" :
+        rsi >= config.rsiOverbought ? "과매수 영역" : "중립 영역",
+      passed: scoreBreakdown.strength > 0,
+    },
+    {
+      label: "BB %B(20,2)",
+      value: `${(bbPercent * 100).toFixed(1)}%`,
+      signal:
+        bbPercent <= 0.2 ? "하단 근접 (과매도)" :
+        bbPercent >= 0.8 ? "상단 근접 (과매수)" : "중간 영역",
+      passed: scoreBreakdown.volatility > 0,
+    },
+    {
+      label: "MA 크로스",
+      value: `MA20 ${formatRateDisplay(report.currency, ma20)}`,
+      signal: ma20 < ma50 ? "데드크로스 (하락추세)" : "골든크로스 (상승추세)",
+      passed: ma20 < ma50,
+    },
+  ];
+}
+
+// ========== TradingView 차트 컴포넌트 ==========
+
+function TradingViewChart({ currency }: { currency: string }) {
+  const symbol = TV_SYMBOLS[currency] || TV_SYMBOLS.USD;
+  const chartUrl = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(symbol)}`;
+  const embedUrl = `https://s.tradingview.com/widgetembed/?frameElementId=tv_chart_${currency}&symbol=${encodeURIComponent(symbol)}&interval=D&theme=light&style=1&locale=kr&hide_side_toolbar=1&allow_symbol_change=0&save_image=0&withdateranges=1&hide_volume=1`;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+          <BarChart3 className="h-4 w-4 text-gray-500" />
+          TradingView 차트
+        </h3>
+        <a
+          href={chartUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+        >
+          TradingView에서 보기
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      </div>
+      <div className="rounded-xl border border-gray-200 overflow-hidden bg-white">
+        <iframe
+          src={embedUrl}
+          className="w-full h-[350px] border-0"
+          allow="fullscreen"
+          loading="lazy"
+        />
+      </div>
+    </div>
+  );
 }
 
 // ========== 메인 배너 컴포넌트 ==========
@@ -192,7 +282,6 @@ export function ExchangeAlertBanner() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // 배너 데이터 fetch
   const fetchAlerts = useCallback(async () => {
     try {
       const res = await fetch("/api/exchange-alert/status");
@@ -208,7 +297,6 @@ export function ExchangeAlertBanner() {
     }
   }, []);
 
-  // 상세 리포트 fetch
   const fetchReport = useCallback(async (currency: string) => {
     setReportLoading(true);
     try {
@@ -224,7 +312,6 @@ export function ExchangeAlertBanner() {
     }
   }, []);
 
-  // 활동 기반 폴링 (탭 활성 시에만)
   useEffect(() => {
     fetchAlerts();
 
@@ -258,7 +345,6 @@ export function ExchangeAlertBanner() {
     };
   }, [fetchAlerts]);
 
-  // 통화 로테이션 (8초 간격)
   useEffect(() => {
     if (alerts.length <= 1) return;
 
@@ -271,14 +357,12 @@ export function ExchangeAlertBanner() {
     };
   }, [alerts.length]);
 
-  // 리포트 다이얼로그 열기
   const openReport = (currency: string) => {
     setReportOpen(true);
     setReport(null);
     fetchReport(currency);
   };
 
-  // 로딩 스켈레톤
   if (loading) {
     return (
       <div className="w-full border-b border-gray-100 bg-gray-50/50">
@@ -320,17 +404,14 @@ export function ExchangeAlertBanner() {
           >
             {/* 좌: 통화 + 신호 배지 */}
             <div className="flex items-center gap-2.5 min-w-0">
-              {/* 통화 아이콘 */}
               <span className="flex items-center justify-center w-6 h-6 rounded-md bg-white/80 border border-gray-200/50 text-xs font-bold text-gray-700 shrink-0">
                 {icon}
               </span>
 
-              {/* 통화명 */}
               <span className={cn("font-semibold whitespace-nowrap text-xs sm:text-sm", style.text)}>
-                {current.currencyLabel}
+                {current.currencyName}
               </span>
 
-              {/* 신호 배지 */}
               <span className={cn(
                 "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold tracking-tight shrink-0",
                 style.badge
@@ -339,13 +420,11 @@ export function ExchangeAlertBanner() {
                 {current.tierLabel}
               </span>
 
-              {/* 환율 */}
               <span className="font-mono font-semibold text-gray-900 tabular-nums text-sm">
-                {formatRateDisplay(current.currency, current.indicators.currentRate)}
+                {formatRateDisplay(current.currency, current.currentRate)}
               </span>
               <span className="text-[10px] text-gray-400 hidden sm:inline">{rateUnit}</span>
 
-              {/* 등락 */}
               <span className={cn(
                 "flex items-center gap-0.5 text-xs font-medium tabular-nums",
                 isUp ? "text-red-500" : isDown ? "text-blue-500" : "text-gray-400"
@@ -365,10 +444,10 @@ export function ExchangeAlertBanner() {
                 <span className="text-gray-400">CCI</span>
                 <span className={cn(
                   "font-mono font-medium tabular-nums",
-                  current.indicators.cci < -100 ? "text-emerald-600" :
-                  current.indicators.cci > 100 ? "text-red-500" : "text-gray-600"
+                  current.cci < -100 ? "text-emerald-600" :
+                  current.cci > 100 ? "text-red-500" : "text-gray-600"
                 )}>
-                  {current.indicators.cci.toFixed(0)}
+                  {current.cci.toFixed(0)}
                 </span>
               </span>
               <span className="text-gray-300">|</span>
@@ -376,26 +455,25 @@ export function ExchangeAlertBanner() {
                 <span className="text-gray-400">RSI</span>
                 <span className={cn(
                   "font-mono font-medium tabular-nums",
-                  current.indicators.rsi < 35 ? "text-emerald-600" :
-                  current.indicators.rsi > 65 ? "text-red-500" : "text-gray-600"
+                  current.rsi < 35 ? "text-emerald-600" :
+                  current.rsi > 65 ? "text-red-500" : "text-gray-600"
                 )}>
-                  {current.indicators.rsi.toFixed(0)}
+                  {current.rsi.toFixed(0)}
                 </span>
               </span>
               <span className="text-gray-300">|</span>
               <span className="flex items-center gap-1">
                 <span className="text-gray-400">BB</span>
                 <span className="font-medium text-gray-600">
-                  {current.indicators.bbPercB < 0.2 ? "하단↓" :
-                   current.indicators.bbPercB > 0.8 ? "상단↑" :
-                   current.indicators.bbPercB < 0.5 ? "중간↓" : "중간↑"}
+                  {current.bbPercent < 0.2 ? "하단\u2193" :
+                   current.bbPercent > 0.8 ? "상단\u2191" :
+                   current.bbPercent < 0.5 ? "중간\u2193" : "중간\u2191"}
                 </span>
               </span>
             </div>
 
             {/* 우: 상세보기 + 로테이션 도트 */}
             <div className="flex items-center gap-2.5 shrink-0">
-              {/* 로테이션 인디케이터 */}
               {alerts.length > 1 && (
                 <div className="hidden sm:flex items-center gap-1">
                   {alerts.map((_, i) => (
@@ -427,11 +505,11 @@ export function ExchangeAlertBanner() {
 
       {/* 상세 리포트 다이얼로그 */}
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5 text-gray-600" />
-              {report?.currencyLabel || current.currencyLabel} 환율 분석 리포트
+              {report?.currencyName || current.currencyName} 환율 분석 리포트
             </DialogTitle>
             <DialogDescription>
               기술적 지표 기반 6단계 종합 분석 ({rateUnit}/KRW)
@@ -461,6 +539,7 @@ function ReportContent({ report }: { report: AlertReport }) {
   const rateUnit = getRateUnit(report.currency);
   const isUp = report.changePercent > 0;
   const isDown = report.changePercent < 0;
+  const signals = deriveSignals(report);
 
   return (
     <div className="space-y-5">
@@ -482,7 +561,7 @@ function ReportContent({ report }: { report: AlertReport }) {
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold text-gray-900 tabular-nums">
-                {formatRateDisplay(report.currency, report.indicators.currentRate)}
+                {formatRateDisplay(report.currency, report.currentRate)}
               </span>
               <span className="text-sm text-gray-500">{rateUnit}/KRW</span>
             </div>
@@ -522,11 +601,14 @@ function ReportContent({ report }: { report: AlertReport }) {
         </div>
 
         <p className="text-xs text-gray-500">
-          {report.characteristics}
+          {report.config?.description}
         </p>
       </div>
 
-      {/* 섹션 2: 기술적 지표 판정 */}
+      {/* 섹션 2: TradingView 차트 */}
+      <TradingViewChart currency={report.currency} />
+
+      {/* 섹션 3: 기술적 지표 판정 */}
       <div className="space-y-2">
         <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
           <BarChart3 className="h-4 w-4 text-gray-500" />
@@ -543,45 +625,36 @@ function ReportContent({ report }: { report: AlertReport }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {Object.entries(report.signals).map(([key, sig]) => {
-                const labels: Record<string, string> = {
-                  trendFilter: "추세 (MA50)",
-                  cci: "CCI(20)",
-                  rsi: "RSI(14)",
-                  bb: "BB %B(20,2)",
-                  maCross: "MA 크로스",
-                };
-                return (
-                  <tr key={key} className="hover:bg-gray-50/50">
-                    <td className="px-3 py-2.5 font-medium text-gray-700 text-xs">
-                      {labels[key]}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs tabular-nums text-gray-600">
-                      {sig.detail}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs text-gray-600 max-w-[180px] truncate">
-                      {sig.signal}
-                    </td>
-                    <td className="px-3 py-2.5 text-center">
-                      {sig.passed ? (
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100">
-                          <Check className="h-3 w-3 text-emerald-600" />
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100">
-                          <XIcon className="h-3 w-3 text-gray-400" />
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {signals.map((sig) => (
+                <tr key={sig.label} className="hover:bg-gray-50/50">
+                  <td className="px-3 py-2.5 font-medium text-gray-700 text-xs">
+                    {sig.label}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs tabular-nums text-gray-600">
+                    {sig.value}
+                  </td>
+                  <td className="px-3 py-2.5 text-xs text-gray-600 max-w-[180px] truncate">
+                    {sig.signal}
+                  </td>
+                  <td className="px-3 py-2.5 text-center">
+                    {sig.passed ? (
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-100">
+                        <Check className="h-3 w-3 text-emerald-600" />
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-100">
+                        <XIcon className="h-3 w-3 text-gray-400" />
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* 섹션 3: 최근 20일 캔들 추이 */}
+      {/* 섹션 4: 최근 20일 캔들 추이 */}
       {report.recentCandles && report.recentCandles.length > 0 && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
@@ -615,7 +688,7 @@ function ReportContent({ report }: { report: AlertReport }) {
                         {c.date.slice(5)}
                       </td>
                       <td className="px-3 py-2 tabular-nums text-right font-medium text-gray-800">
-                        {formatRateDisplay(report.currency, c.close)}
+                        {formatRateDisplay(report.currency, c.rate)}
                       </td>
                       <td className={cn(
                         "px-3 py-2 tabular-nums text-right font-medium",
@@ -634,8 +707,8 @@ function ReportContent({ report }: { report: AlertReport }) {
                       <td className="px-3 py-2 text-center">
                         <span className={cn(
                           "inline-block px-1.5 py-0.5 rounded text-[10px] font-medium",
-                          c.bbPos.includes("하단") ? "bg-emerald-100 text-emerald-700" :
-                          c.bbPos.includes("상단") ? "bg-red-100 text-red-700" :
+                          c.bbPos.includes("\u{D558}\u{B2E8}") ? "bg-emerald-100 text-emerald-700" :
+                          c.bbPos.includes("\u{C0C1}\u{B2E8}") ? "bg-red-100 text-red-700" :
                           "bg-gray-100 text-gray-600"
                         )}>
                           {c.bbPos}
@@ -650,7 +723,7 @@ function ReportContent({ report }: { report: AlertReport }) {
         </div>
       )}
 
-      {/* 섹션 4: 종합 판단 */}
+      {/* 섹션 5: 종합 판단 */}
       {report.summary && (
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
@@ -661,11 +734,11 @@ function ReportContent({ report }: { report: AlertReport }) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="text-center">
                 <p className="text-[11px] text-gray-500">MA50 상회</p>
-                <p className="text-lg font-bold tabular-nums text-gray-800">{report.summary.daysAboveMA50}일</p>
+                <p className="text-lg font-bold tabular-nums text-gray-800">{20 - report.summary.daysBelow50MA}일</p>
               </div>
               <div className="text-center">
                 <p className="text-[11px] text-gray-500">MA50 하회</p>
-                <p className="text-lg font-bold tabular-nums text-gray-800">{report.summary.daysBelowMA50}일</p>
+                <p className="text-lg font-bold tabular-nums text-gray-800">{report.summary.daysBelow50MA}일</p>
               </div>
               <div className="text-center">
                 <p className="text-[11px] text-gray-500">20일 저점</p>
