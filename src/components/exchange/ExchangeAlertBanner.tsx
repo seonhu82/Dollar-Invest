@@ -366,7 +366,7 @@ export function ExchangeAlertBanner() {
 
   if (loading) {
     return (
-      <div className="w-full border-b border-gray-100 bg-gray-50">
+      <div className="w-full border-b border-gray-100 bg-gray-50/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="h-10 flex items-center">
             <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
@@ -392,7 +392,7 @@ export function ExchangeAlertBanner() {
     <>
       <div
         className={cn(
-          "w-full border-b transition-all duration-500 bg-white",
+          "w-full border-b transition-all duration-500 backdrop-blur-md",
           style.bg,
           style.border,
           style.pulse && "animate-[pulse_3s_ease-in-out_infinite]"
