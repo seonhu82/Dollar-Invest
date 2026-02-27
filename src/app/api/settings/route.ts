@@ -20,6 +20,8 @@ export async function GET() {
         notifRateAlert: true,
         notifDailyReport: true,
         notifOrderComplete: true,
+        bannerEnabled: true,
+        bannerCurrencies: true,
       },
     });
 
@@ -43,13 +45,15 @@ export async function PATCH(request: Request) {
     }
 
     const body = await request.json();
-    const { name, notifRateAlert, notifDailyReport, notifOrderComplete } = body;
+    const { name, notifRateAlert, notifDailyReport, notifOrderComplete, bannerEnabled, bannerCurrencies } = body;
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
     if (notifRateAlert !== undefined) updateData.notifRateAlert = notifRateAlert;
     if (notifDailyReport !== undefined) updateData.notifDailyReport = notifDailyReport;
     if (notifOrderComplete !== undefined) updateData.notifOrderComplete = notifOrderComplete;
+    if (bannerEnabled !== undefined) updateData.bannerEnabled = bannerEnabled;
+    if (bannerCurrencies !== undefined) updateData.bannerCurrencies = bannerCurrencies;
 
     const user = await prisma.user.update({
       where: { id: session.user.id },
@@ -60,6 +64,8 @@ export async function PATCH(request: Request) {
         notifRateAlert: true,
         notifDailyReport: true,
         notifOrderComplete: true,
+        bannerEnabled: true,
+        bannerCurrencies: true,
       },
     });
 

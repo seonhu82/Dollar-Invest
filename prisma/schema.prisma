@@ -28,6 +28,10 @@ model User {
   notifDailyReport   Boolean @default(false)
   notifOrderComplete Boolean @default(true)
 
+  // 상단 롤링 배너 설정
+  bannerEnabled    Boolean @default(true)
+  bannerCurrencies String  @default("USD,JPY,EUR,GBP,CNY")
+
   // 계정 상태
   isActive      Boolean   @default(true)
   suspendedAt   DateTime?

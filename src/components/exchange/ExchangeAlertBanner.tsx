@@ -271,17 +271,188 @@ function TradingViewChart({ currency }: { currency: string }) {
   );
 }
 
+// ========== 배너 아이템 (각 통화 한 줄) ==========
+
+function BannerItem({
+  alert,
+  alerts,
+  currentIndex,
+  onOpenReport,
+  onPrev,
+  onNext,
+  onSetIndex,
+}: {
+  alert: AlertStatus;
+  alerts: AlertStatus[];
+  currentIndex: number;
+  onOpenReport: (currency: string) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onSetIndex: (i: number) => void;
+}) {
+  const style = TIER_STYLES[alert.tier];
+  const Icon = style.icon;
+  const icon = CURRENCY_ICONS[alert.currency] || alert.currency;
+  const rateUnit = getRateUnit(alert.currency);
+  const isUp = alert.changePercent > 0;
+  const isDown = alert.changePercent < 0;
+
+  return (
+    <div className="w-full h-10 flex items-center justify-between gap-2 sm:gap-3 text-sm overflow-hidden">
+      {/* 좌: 통화 + 신호 배지 */}
+      <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 overflow-hidden">
+        <span className="flex items-center justify-center w-6 h-6 rounded-md bg-white/80 border border-gray-200/50 text-xs font-bold text-gray-700 shrink-0">
+          {icon}
+        </span>
+
+        <span className={cn("font-semibold whitespace-nowrap text-xs sm:text-sm", style.text)}>
+          {alert.currencyName}
+        </span>
+
+        <span className={cn(
+          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold tracking-tight shrink-0",
+          style.badge
+        )}>
+          <Icon className="h-3 w-3" />
+          {alert.tierLabel}
+        </span>
+
+        <span className="font-mono font-semibold text-gray-900 tabular-nums text-sm shrink-0">
+          {formatRateDisplay(alert.currency, alert.currentRate)}
+        </span>
+        <span className="text-[10px] text-gray-400 hidden sm:inline">{rateUnit}</span>
+
+        <span className={cn(
+          "hidden sm:flex items-center gap-0.5 text-xs font-medium tabular-nums shrink-0",
+          isUp ? "text-red-500" : isDown ? "text-blue-500" : "text-gray-400"
+        )}>
+          {isUp ? (
+            <ArrowUpRight className="h-3 w-3" />
+          ) : isDown ? (
+            <ArrowDownRight className="h-3 w-3" />
+          ) : null}
+          {isUp ? "+" : ""}{alert.changePercent.toFixed(2)}%
+        </span>
+      </div>
+
+      {/* 중: 지표 요약 (md 이상) */}
+      <div className="hidden md:flex items-center gap-3 text-xs text-gray-500">
+        <span className="flex items-center gap-1">
+          <span className="text-gray-400">CCI</span>
+          <span className={cn(
+            "font-mono font-medium tabular-nums",
+            alert.cci < -100 ? "text-emerald-600" :
+            alert.cci > 100 ? "text-red-500" : "text-gray-600"
+          )}>
+            {alert.cci.toFixed(0)}
+          </span>
+        </span>
+        <span className="text-gray-300">|</span>
+        <span className="flex items-center gap-1">
+          <span className="text-gray-400">RSI</span>
+          <span className={cn(
+            "font-mono font-medium tabular-nums",
+            alert.rsi < 35 ? "text-emerald-600" :
+            alert.rsi > 65 ? "text-red-500" : "text-gray-600"
+          )}>
+            {alert.rsi.toFixed(0)}
+          </span>
+        </span>
+        <span className="text-gray-300">|</span>
+        <span className="flex items-center gap-1">
+          <span className="text-gray-400">BB</span>
+          <span className="font-medium text-gray-600">
+            {alert.bbPercent < 0.2 ? "하단\u2193" :
+             alert.bbPercent > 0.8 ? "상단\u2191" :
+             alert.bbPercent < 0.5 ? "중간\u2193" : "중간\u2191"}
+          </span>
+        </span>
+      </div>
+
+      {/* 우: 네비게이션 + 상세보기 */}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {alerts.length > 1 && (
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPrev();
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-gray-400 hover:text-gray-600"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <div className="hidden sm:flex items-center gap-1">
+              {alerts.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSetIndex(i);
+                  }}
+                  className={cn(
+                    "h-1.5 rounded-full transition-all duration-300",
+                    i === currentIndex
+                      ? "bg-gray-600 w-3"
+                      : "bg-gray-300 hover:bg-gray-400 w-1.5"
+                  )}
+                />
+              ))}
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onNext();
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-gray-400 hover:text-gray-600"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+
+        <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors flex items-center gap-0.5 ml-1">
+          <BarChart3 className="h-3.5 w-3.5" />
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ========== 메인 배너 컴포넌트 ==========
 
 export function ExchangeAlertBanner() {
-  const [alerts, setAlerts] = useState<AlertStatus[]>([]);
+  const [allAlerts, setAllAlerts] = useState<AlertStatus[]>([]);
+  const [filteredAlerts, setFilteredAlerts] = useState<AlertStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [bannerEnabled, setBannerEnabled] = useState(true);
+  const [bannerCurrencies, setBannerCurrencies] = useState<string[]>([]);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [displayIndex, setDisplayIndex] = useState(0);
   const [reportOpen, setReportOpen] = useState(false);
   const [report, setReport] = useState<AlertReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // 배너 설정 로드
+  useEffect(() => {
+    fetch("/api/settings/banner")
+      .then((res) => res.json())
+      .then((data) => {
+        setBannerEnabled(data.bannerEnabled ?? true);
+        setBannerCurrencies(
+          (data.bannerCurrencies || "USD,JPY,EUR,GBP,CNY").split(",").filter(Boolean)
+        );
+      })
+      .catch(() => {
+        setBannerEnabled(true);
+        setBannerCurrencies(["USD", "JPY", "EUR", "GBP", "CNY"]);
+      })
+      .finally(() => setSettingsLoaded(true));
+  }, []);
 
   const fetchAlerts = useCallback(async () => {
     try {
@@ -289,7 +460,7 @@ export function ExchangeAlertBanner() {
       if (!res.ok) return;
       const data = await res.json();
       if (data.alerts && data.alerts.length > 0) {
-        setAlerts(data.alerts);
+        setAllAlerts(data.alerts);
       }
     } catch {
       // 실패 시 기존 데이터 유지
@@ -312,6 +483,20 @@ export function ExchangeAlertBanner() {
       setReportLoading(false);
     }
   }, []);
+
+  // 설정에 따라 필터링
+  useEffect(() => {
+    if (bannerCurrencies.length === 0) {
+      setFilteredAlerts(allAlerts);
+    } else {
+      const filtered = bannerCurrencies
+        .map((code) => allAlerts.find((a) => a.currency === code))
+        .filter((a): a is AlertStatus => a != null);
+      setFilteredAlerts(filtered);
+    }
+    setCurrentIndex(0);
+    setDisplayIndex(0);
+  }, [allAlerts, bannerCurrencies]);
 
   useEffect(() => {
     fetchAlerts();
@@ -346,17 +531,53 @@ export function ExchangeAlertBanner() {
     };
   }, [fetchAlerts]);
 
+  // 위로 롤링 자동 전환
   useEffect(() => {
-    if (alerts.length <= 1) return;
+    if (filteredAlerts.length <= 1) return;
 
     rotateRef.current = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % alerts.length);
-    }, 8000);
+      goToNext();
+    }, 6000);
 
     return () => {
       if (rotateRef.current) clearInterval(rotateRef.current);
     };
-  }, [alerts.length]);
+  }, [filteredAlerts.length]);
+
+  const goToNext = useCallback(() => {
+    setIsTransitioning(true);
+    // 애니메이션 시작 후 300ms 뒤에 실제 인덱스 변경
+    setTimeout(() => {
+      setCurrentIndex((prev) => {
+        const next = (prev + 1) % Math.max(filteredAlerts.length, 1);
+        setDisplayIndex(next);
+        return next;
+      });
+      setIsTransitioning(false);
+    }, 300);
+  }, [filteredAlerts.length]);
+
+  const goToPrev = useCallback(() => {
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setCurrentIndex((prev) => {
+        const next = (prev - 1 + filteredAlerts.length) % Math.max(filteredAlerts.length, 1);
+        setDisplayIndex(next);
+        return next;
+      });
+      setIsTransitioning(false);
+    }, 300);
+  }, [filteredAlerts.length]);
+
+  const goToIndex = useCallback((i: number) => {
+    if (i === currentIndex) return;
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setCurrentIndex(i);
+      setDisplayIndex(i);
+      setIsTransitioning(false);
+    }, 300);
+  }, [currentIndex]);
 
   const openReport = (currency: string) => {
     setReportOpen(true);
@@ -364,7 +585,8 @@ export function ExchangeAlertBanner() {
     fetchReport(currency);
   };
 
-  if (loading) {
+  // 로딩 중
+  if (loading || !settingsLoaded) {
     return (
       <div className="w-full border-b border-gray-100 bg-gray-50/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -376,150 +598,71 @@ export function ExchangeAlertBanner() {
     );
   }
 
-  if (alerts.length === 0) return null;
+  // 배너 비활성화
+  if (!bannerEnabled) return null;
 
-  const current = alerts[currentIndex % alerts.length];
+  if (filteredAlerts.length === 0) return null;
+
+  const current = filteredAlerts[displayIndex % filteredAlerts.length];
   if (!current) return null;
 
   const style = TIER_STYLES[current.tier];
-  const Icon = style.icon;
-  const icon = CURRENCY_ICONS[current.currency] || current.currency;
-  const rateUnit = getRateUnit(current.currency);
-  const isUp = current.changePercent > 0;
-  const isDown = current.changePercent < 0;
+
+  // 다음 아이템 (롤링 애니메이션용)
+  const nextIndex = (displayIndex + 1) % filteredAlerts.length;
+  const nextAlert = filteredAlerts[nextIndex];
+  const nextStyle = nextAlert ? TIER_STYLES[nextAlert.tier] : style;
 
   return (
     <>
       <div
         className={cn(
-          "w-full border-b transition-all duration-500",
-          style.bg,
-          style.border,
-          style.pulse && "animate-[pulse_3s_ease-in-out_infinite]"
+          "w-full border-b overflow-hidden",
+          // 트랜지션 중이면 다음 배경으로
+          isTransitioning ? nextStyle.bg : style.bg,
+          isTransitioning ? nextStyle.border : style.border,
+          style.pulse && !isTransitioning && "animate-[pulse_3s_ease-in-out_infinite]",
+          "transition-all duration-300"
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <button
-            onClick={() => openReport(current.currency)}
-            className="w-full h-10 flex items-center justify-between gap-2 sm:gap-3 text-sm group cursor-pointer overflow-hidden"
-          >
-            {/* 좌: 통화 + 신호 배지 */}
-            <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 overflow-hidden">
-              <span className="flex items-center justify-center w-6 h-6 rounded-md bg-white/80 border border-gray-200/50 text-xs font-bold text-gray-700 shrink-0">
-                {icon}
-              </span>
-
-              <span className={cn("font-semibold whitespace-nowrap text-xs sm:text-sm", style.text)}>
-                {current.currencyName}
-              </span>
-
-              <span className={cn(
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold tracking-tight shrink-0",
-                style.badge
-              )}>
-                <Icon className="h-3 w-3" />
-                {current.tierLabel}
-              </span>
-
-              <span className="font-mono font-semibold text-gray-900 tabular-nums text-sm shrink-0">
-                {formatRateDisplay(current.currency, current.currentRate)}
-              </span>
-              <span className="text-[10px] text-gray-400 hidden sm:inline">{rateUnit}</span>
-
-              <span className={cn(
-                "hidden sm:flex items-center gap-0.5 text-xs font-medium tabular-nums shrink-0",
-                isUp ? "text-red-500" : isDown ? "text-blue-500" : "text-gray-400"
-              )}>
-                {isUp ? (
-                  <ArrowUpRight className="h-3 w-3" />
-                ) : isDown ? (
-                  <ArrowDownRight className="h-3 w-3" />
-                ) : null}
-                {isUp ? "+" : ""}{current.changePercent.toFixed(2)}%
-              </span>
-            </div>
-
-            {/* 중: 지표 요약 (md 이상) */}
-            <div className="hidden md:flex items-center gap-3 text-xs text-gray-500">
-              <span className="flex items-center gap-1">
-                <span className="text-gray-400">CCI</span>
-                <span className={cn(
-                  "font-mono font-medium tabular-nums",
-                  current.cci < -100 ? "text-emerald-600" :
-                  current.cci > 100 ? "text-red-500" : "text-gray-600"
-                )}>
-                  {current.cci.toFixed(0)}
-                </span>
-              </span>
-              <span className="text-gray-300">|</span>
-              <span className="flex items-center gap-1">
-                <span className="text-gray-400">RSI</span>
-                <span className={cn(
-                  "font-mono font-medium tabular-nums",
-                  current.rsi < 35 ? "text-emerald-600" :
-                  current.rsi > 65 ? "text-red-500" : "text-gray-600"
-                )}>
-                  {current.rsi.toFixed(0)}
-                </span>
-              </span>
-              <span className="text-gray-300">|</span>
-              <span className="flex items-center gap-1">
-                <span className="text-gray-400">BB</span>
-                <span className="font-medium text-gray-600">
-                  {current.bbPercent < 0.2 ? "하단\u2193" :
-                   current.bbPercent > 0.8 ? "상단\u2191" :
-                   current.bbPercent < 0.5 ? "중간\u2193" : "중간\u2191"}
-                </span>
-              </span>
-            </div>
-
-            {/* 우: 네비게이션 + 상세보기 */}
-            <div className="flex items-center gap-1.5 shrink-0">
-              {alerts.length > 1 && (
-                <>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentIndex((prev) => (prev - 1 + alerts.length) % alerts.length);
-                    }}
-                    className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-gray-400 hover:text-gray-600"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </button>
-                  <div className="hidden sm:flex items-center gap-1">
-                    {alerts.map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setCurrentIndex(i);
-                        }}
-                        className={cn(
-                          "h-1.5 rounded-full transition-all duration-300",
-                          i === currentIndex % alerts.length
-                            ? "bg-gray-600 w-3"
-                            : "bg-gray-300 hover:bg-gray-400 w-1.5"
-                        )}
-                      />
-                    ))}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCurrentIndex((prev) => (prev + 1) % alerts.length);
-                    }}
-                    className="h-6 w-6 flex items-center justify-center rounded-full hover:bg-black/5 transition-colors text-gray-400 hover:text-gray-600"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
-                </>
+          <div className="relative h-10 overflow-hidden">
+            <button
+              onClick={() => openReport(current.currency)}
+              className={cn(
+                "absolute inset-0 w-full group cursor-pointer",
+                "transition-transform duration-300 ease-in-out",
+                isTransitioning ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100"
               )}
-
-              <span className="text-xs text-gray-400 group-hover:text-gray-600 transition-colors flex items-center gap-0.5 ml-1">
-                <BarChart3 className="h-3.5 w-3.5" />
-              </span>
-            </div>
-          </button>
+            >
+              <BannerItem
+                alert={current}
+                alerts={filteredAlerts}
+                currentIndex={displayIndex}
+                onOpenReport={openReport}
+                onPrev={goToPrev}
+                onNext={goToNext}
+                onSetIndex={goToIndex}
+              />
+            </button>
+            {/* 다음 아이템 (아래에서 올라오는 애니메이션) */}
+            {isTransitioning && nextAlert && (
+              <button
+                onClick={() => openReport(nextAlert.currency)}
+                className="absolute inset-0 w-full group cursor-pointer animate-[slideUp_300ms_ease-in-out_forwards]"
+              >
+                <BannerItem
+                  alert={nextAlert}
+                  alerts={filteredAlerts}
+                  currentIndex={nextIndex}
+                  onOpenReport={openReport}
+                  onPrev={goToPrev}
+                  onNext={goToNext}
+                  onSetIndex={goToIndex}
+                />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -532,7 +675,7 @@ export function ExchangeAlertBanner() {
               {report?.currencyName || current.currencyName} 환율 분석 리포트
             </DialogTitle>
             <DialogDescription>
-              기술적 지표 기반 6단계 종합 분석 ({rateUnit}/KRW)
+              기술적 지표 기반 6단계 종합 분석 ({getRateUnit(current.currency)}/KRW)
             </DialogDescription>
           </DialogHeader>
 
@@ -547,6 +690,20 @@ export function ExchangeAlertBanner() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* 롤링 애니메이션 keyframes */}
+      <style jsx global>{`
+        @keyframes slideUp {
+          from {
+            transform: translateY(100%);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
     </>
   );
 }
