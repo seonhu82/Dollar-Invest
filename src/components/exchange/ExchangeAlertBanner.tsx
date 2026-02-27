@@ -366,7 +366,7 @@ export function ExchangeAlertBanner() {
 
   if (loading) {
     return (
-      <div className="w-full border-b border-gray-100 bg-gray-50/50">
+      <div className="w-full border-b border-gray-100 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="h-10 flex items-center">
             <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
@@ -392,7 +392,7 @@ export function ExchangeAlertBanner() {
     <>
       <div
         className={cn(
-          "w-full border-b transition-all duration-500",
+          "w-full border-b transition-all duration-500 bg-white",
           style.bg,
           style.border,
           style.pulse && "animate-[pulse_3s_ease-in-out_infinite]"
@@ -401,10 +401,10 @@ export function ExchangeAlertBanner() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <button
             onClick={() => openReport(current.currency)}
-            className="w-full h-10 flex items-center justify-between gap-3 text-sm group cursor-pointer"
+            className="w-full h-10 flex items-center justify-between gap-2 sm:gap-3 text-sm group cursor-pointer overflow-hidden"
           >
             {/* 좌: 통화 + 신호 배지 */}
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 overflow-hidden">
               <span className="flex items-center justify-center w-6 h-6 rounded-md bg-white/80 border border-gray-200/50 text-xs font-bold text-gray-700 shrink-0">
                 {icon}
               </span>
@@ -421,13 +421,13 @@ export function ExchangeAlertBanner() {
                 {current.tierLabel}
               </span>
 
-              <span className="font-mono font-semibold text-gray-900 tabular-nums text-sm">
+              <span className="font-mono font-semibold text-gray-900 tabular-nums text-sm shrink-0">
                 {formatRateDisplay(current.currency, current.currentRate)}
               </span>
               <span className="text-[10px] text-gray-400 hidden sm:inline">{rateUnit}</span>
 
               <span className={cn(
-                "flex items-center gap-0.5 text-xs font-medium tabular-nums",
+                "hidden sm:flex items-center gap-0.5 text-xs font-medium tabular-nums shrink-0",
                 isUp ? "text-red-500" : isDown ? "text-blue-500" : "text-gray-400"
               )}>
                 {isUp ? (
