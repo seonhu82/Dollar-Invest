@@ -28,22 +28,28 @@ interface ExchangeRate {
   timestamp: string;
 }
 
-// 포트폴리오 데이터 (API 연동 전까지 빈 배열)
-const mockPortfolios: {
+interface Portfolio {
   id: string;
   name: string;
   currency: string;
   currentBalance: number;
   avgBuyRate: number;
   totalInvested: number;
+  totalRealizedPnl: number;
   currentRate: number;
   broker: string;
-}[] = [];
+}
+
+interface Alert {
+  id: string;
+  isActive: boolean;
+}
 
 export default function DashboardPage() {
   const [rates, setRates] = useState<ExchangeRate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [portfolios] = useState(mockPortfolios);
+  const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
+  const [activeAlertCount, setActiveAlertCount] = useState(0);
 
   const fetchRates = async () => {
     setLoading(true);
@@ -60,8 +66,34 @@ export default function DashboardPage() {
     }
   };
 
+  const fetchPortfolios = async () => {
+    try {
+      const res = await fetch("/api/portfolios");
+      const data = await res.json();
+      if (data.portfolios) {
+        setPortfolios(data.portfolios);
+      }
+    } catch (error) {
+      console.error("Failed to fetch portfolios:", error);
+    }
+  };
+
+  const fetchAlerts = async () => {
+    try {
+      const res = await fetch("/api/alerts");
+      const data = await res.json();
+      if (data.alerts) {
+        setActiveAlertCount(data.alerts.filter((a: Alert) => a.isActive).length);
+      }
+    } catch {
+      // 알림 조회 실패 시 무시
+    }
+  };
+
   useEffect(() => {
     fetchRates();
+    fetchPortfolios();
+    fetchAlerts();
     // 1분마다 자동 새로고침
     const interval = setInterval(fetchRates, 60000);
     return () => clearInterval(interval);
@@ -69,7 +101,7 @@ export default function DashboardPage() {
 
   // 포트폴리오에 현재 환율 적용
   const portfoliosWithCurrentRate = portfolios.map((p) => {
-    const currentRate = rates.find((r) => r.currency === p.currency)?.rate || p.currentRate;
+    const currentRate = rates.find((r) => r.currency === p.currency)?.rate || p.avgBuyRate;
     return { ...p, currentRate };
   });
 
@@ -174,7 +206,7 @@ export default function DashboardPage() {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-gray-900">3개</div>
+              <div className="text-2xl font-bold text-gray-900">{activeAlertCount}개</div>
               <p className="text-xs text-muted-foreground mt-1">환율 알림 설정됨</p>
             </CardContent>
           </Card>
@@ -242,11 +274,29 @@ export default function DashboardPage() {
               </Link>
             </Button>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {portfoliosWithCurrentRate.map((portfolio) => (
-              <PortfolioCard key={portfolio.id} {...portfolio} />
-            ))}
-          </div>
+          {portfoliosWithCurrentRate.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {portfoliosWithCurrentRate.map((portfolio) => (
+                <PortfolioCard key={portfolio.id} {...portfolio} />
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <Wallet className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-semibold mb-2">포트폴리오가 없습니다</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  첫 포트폴리오를 만들어보세요.
+                </p>
+                <Button asChild>
+                  <Link href="/portfolio/new">
+                    <Plus className="h-4 w-4 mr-2" />
+                    포트폴리오 만들기
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </main>
     </div>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getInternalRate } from "@/lib/utils";
 import * as XLSX from "xlsx";
 
 interface ParsedRow {
@@ -236,9 +237,14 @@ export async function POST(request: Request) {
     // DB 일괄 저장
     await prisma.$transaction(async (tx) => {
       for (const item of valid) {
-        const krwAmount = item.amount * item.rate + item.fee;
-        const realizedPnl = item.entryRate !== null
-          ? (item.rate - item.entryRate) * item.amount
+        // 엑셀 입력값은 표시 단위 (JPY: 100엔당) → 내부 단위 (1엔당)로 변환
+        const internalRate = getInternalRate(portfolio.currency, item.rate);
+        const internalEntryRate = item.entryRate !== null
+          ? getInternalRate(portfolio.currency, item.entryRate)
+          : null;
+        const krwAmount = item.amount * internalRate + item.fee;
+        const realizedPnl = internalEntryRate !== null
+          ? (internalRate - internalEntryRate) * item.amount
           : null;
 
         await tx.transaction.create({
@@ -248,13 +254,13 @@ export async function POST(request: Request) {
             type: item.type,
             currency: portfolio.currency,
             amount: item.amount,
-            rate: item.rate,
+            rate: internalRate,
             krwAmount,
             fee: item.fee,
             memo: item.memo || null,
             tradedAt: new Date(item.tradedAt),
             isManual: true,
-            entryRate: item.entryRate,
+            entryRate: internalEntryRate,
             realizedPnl,
           },
         });
