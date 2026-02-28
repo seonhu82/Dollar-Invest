@@ -28,6 +28,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   ExternalLink,
+  Pause,
+  RefreshCw,
 } from "lucide-react";
 
 // ========== Types (엔진 API 응답 구조에 맞춤) ==========
@@ -421,7 +423,7 @@ function BannerItem({
 
 // ========== 메인 배너 컴포넌트 ==========
 
-export function ExchangeAlertBanner() {
+export function ExchangeAlertBanner({ isIdle = false }: { isIdle?: boolean }) {
   const [allAlerts, setAllAlerts] = useState<AlertStatus[]>([]);
   const [filteredAlerts, setFilteredAlerts] = useState<AlertStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -457,7 +459,11 @@ export function ExchangeAlertBanner() {
 
   const fetchAlerts = useCallback(async () => {
     try {
-      const res = await fetch("/api/exchange-alert/status");
+      // 배너 설정 통화를 API에 전달하여 포트폴리오 통화 제한 우회
+      const params = bannerCurrencies.length > 0
+        ? `?currencies=${bannerCurrencies.join(",")}`
+        : "";
+      const res = await fetch(`/api/exchange-alert/status${params}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data.alerts && data.alerts.length > 0) {
@@ -468,7 +474,7 @@ export function ExchangeAlertBanner() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [bannerCurrencies]);
 
   const fetchReport = useCallback(async (currency: string) => {
     setReportLoading(true);
@@ -507,6 +513,8 @@ export function ExchangeAlertBanner() {
   }, [filteredAlerts.length]);
 
   useEffect(() => {
+    if (isIdle || !settingsLoaded) return; // 대기 모드 또는 설정 미로드 시 폴링 중지
+
     fetchAlerts();
 
     const startPolling = () => {
@@ -537,7 +545,7 @@ export function ExchangeAlertBanner() {
       stopPolling();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [fetchAlerts]);
+  }, [fetchAlerts, isIdle, settingsLoaded]);
 
   // 전환 헬퍼 (페이드 아웃 → 인덱스 변경 → 페이드 인)
   const doTransition = useCallback((getIndex: (prev: number, len: number) => number) => {
@@ -565,10 +573,10 @@ export function ExchangeAlertBanner() {
 
   // 자동 롤링 인터벌
   useEffect(() => {
-    if (filteredAlerts.length <= 1) return;
+    if (filteredAlerts.length <= 1 || isIdle) return;
     const interval = setInterval(triggerNext, 5000);
     return () => clearInterval(interval);
-  }, [filteredAlerts.length, triggerNext]);
+  }, [filteredAlerts.length, triggerNext, isIdle]);
 
   const openReport = (currency: string) => {
     setReportOpen(true);
@@ -602,36 +610,59 @@ export function ExchangeAlertBanner() {
 
   return (
     <>
-      <div
-        className={cn(
-          "w-full border-b overflow-hidden",
-          style.bg,
-          style.border,
-          style.pulse && "animate-[pulse_3s_ease-in-out_infinite]"
-        )}
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="h-10">
-            <button
-              onClick={() => openReport(current.currency)}
-              className={cn(
-                "w-full group cursor-pointer transition-opacity duration-300",
-                visible ? "opacity-100" : "opacity-0"
-              )}
-            >
-              <BannerItem
-                alert={current}
-                alerts={filteredAlerts}
-                currentIndex={safeIndex}
-                onOpenReport={openReport}
-                onPrev={triggerPrev}
-                onNext={triggerNext}
-                onSetIndex={triggerGoTo}
-              />
-            </button>
+      {isIdle ? (
+        <div className="w-full border-b border-gray-200/60 bg-gray-50/50">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="h-10 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-gray-400 text-sm">
+                <Pause className="h-3.5 w-3.5" />
+                <span>환율 실시간 업데이트 대기 중</span>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-gray-400">
+                <span className="hidden sm:inline">화면을 클릭하거나</span>
+                <button
+                  onClick={fetchAlerts}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  새로고침
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div
+          className={cn(
+            "w-full border-b overflow-hidden",
+            style.bg,
+            style.border,
+            style.pulse && "animate-[pulse_3s_ease-in-out_infinite]"
+          )}
+        >
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="h-10">
+              <button
+                onClick={() => openReport(current.currency)}
+                className={cn(
+                  "w-full group cursor-pointer transition-opacity duration-300",
+                  visible ? "opacity-100" : "opacity-0"
+                )}
+              >
+                <BannerItem
+                  alert={current}
+                  alerts={filteredAlerts}
+                  currentIndex={safeIndex}
+                  onOpenReport={openReport}
+                  onPrev={triggerPrev}
+                  onNext={triggerNext}
+                  onSetIndex={triggerGoTo}
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 상세 리포트 다이얼로그 */}
       <Dialog open={reportOpen} onOpenChange={setReportOpen}>

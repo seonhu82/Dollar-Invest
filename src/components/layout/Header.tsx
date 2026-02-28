@@ -7,6 +7,7 @@ import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ExchangeAlertBanner } from "@/components/exchange/ExchangeAlertBanner";
+import { useUserActivity } from "@/hooks/useUserActivity";
 import {
   DollarSign,
   LayoutDashboard,
@@ -34,6 +35,7 @@ export function Header() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isIdle = useUserActivity(60000); // 1분 비활동 시 대기 모드
 
   // 사용자 역할 확인
   useEffect(() => {
@@ -88,7 +90,7 @@ export function Header() {
 
   // 초기 로드 + 주기적 체크
   useEffect(() => {
-    if (!session?.user?.id) return;
+    if (!session?.user?.id || isIdle) return;
 
     fetchUnreadCount();
     checkAndNotify();
@@ -101,7 +103,7 @@ export function Header() {
     return () => {
       if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
     };
-  }, [session?.user?.id, fetchUnreadCount, checkAndNotify]);
+  }, [session?.user?.id, fetchUnreadCount, checkAndNotify, isIdle]);
 
   // 알림 페이지 진입 시 unread 새로고침
   useEffect(() => {
@@ -199,7 +201,7 @@ export function Header() {
     </header>
 
     {/* 환율 알림 배너 - 헤더 아래 별도 영역 */}
-    <ExchangeAlertBanner />
+    <ExchangeAlertBanner isIdle={isIdle} />
     </>
   );
 }
