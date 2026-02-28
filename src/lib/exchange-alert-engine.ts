@@ -28,7 +28,8 @@
  *   - 복합지표 3개 이상 동시확인 시 신뢰도 향상 (Multi-Indicator Composite Decision Systems)
  */
 
-import { getExchangeRateHistory } from "./exchange";
+import { getExchangeRateHistory, getExchangeRates } from "./exchange";
+import type { ExchangeRateData } from "./exchange";
 
 // ========== Types ==========
 
@@ -570,6 +571,44 @@ const statusCacheMap = new Map<string, CacheEntry<AlertStatus>>();
 const reportCacheMap = new Map<string, CacheEntry<AlertReport>>();
 const CACHE_TTL = 30 * 60 * 1000; // 30분
 
+// ========== 실시간 환율 오버레이 ==========
+
+/**
+ * 캐시된 분석 결과에 실시간 환율을 적용하여 currentRate/score/tier를 재계산.
+ * 기술적 지표(CCI, RSI, BB값 등)는 캐시된 분석 결과를 유지하고,
+ * 현재가/점수/판정만 실시간 환율로 재계산하여 모든 페이지에서 동일한 환율 표시.
+ */
+function applyLiveRate(status: AlertStatus, liveRate: ExchangeRateData): AlertStatus {
+  const config = CURRENCY_CONFIGS[status.currency];
+  if (!config) return status;
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const rate = round2(liveRate.rate);
+
+  // 실시간 환율로 복합 스코어 재계산
+  const { total, breakdown } = calculateCompositeScore(
+    rate, status.ma50, status.cci, status.rsi,
+    status.bbUpper, status.bbLower, config
+  );
+  const tier = determineTier(total);
+
+  // BB %B 재계산
+  const bbRange = status.bbUpper - status.bbLower;
+  const bbPercent = bbRange > 0 ? (rate - status.bbLower) / bbRange : 0.5;
+
+  return {
+    ...status,
+    currentRate: rate,
+    changePercent: liveRate.changePercent,
+    score: total,
+    tier,
+    tierLabel: TIER_INFO[tier].label,
+    scoreBreakdown: breakdown,
+    bbPercent: Math.round(bbPercent * 1000) / 1000,
+    isActive: isFXMarketOpen(),
+  };
+}
+
 // ========== 분석 함수 (외부 노출) ==========
 
 /**
@@ -611,7 +650,17 @@ export async function analyzeStatus(
     }
   }
 
-  return results;
+  // 실시간 환율로 currentRate/score/tier 통일 (모든 페이지에서 동일한 환율 표시)
+  try {
+    const liveRates = await getExchangeRates();
+    const liveMap = new Map(liveRates.map((r) => [r.currency, r]));
+    return results.map((status) => {
+      const live = liveMap.get(status.currency);
+      return live ? applyLiveRate(status, live) : status;
+    });
+  } catch {
+    return results;
+  }
 }
 
 /**
@@ -621,15 +670,30 @@ export async function analyzeStatus(
 export async function analyzeReport(
   currency: string
 ): Promise<AlertReport | null> {
+  let report: AlertReport | null = null;
+
   const cached = reportCacheMap.get(currency);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    return { ...cached.data, isActive: isFXMarketOpen() };
+    report = { ...cached.data, isActive: isFXMarketOpen() };
+  } else {
+    report = (await analyzeCurrency(currency, true)) as AlertReport | null;
+    if (report) {
+      reportCacheMap.set(currency, { data: report, timestamp: Date.now() });
+    }
   }
 
-  const report = (await analyzeCurrency(currency, true)) as AlertReport | null;
+  // 실시간 환율로 currentRate/score/tier 통일
   if (report) {
-    reportCacheMap.set(currency, { data: report, timestamp: Date.now() });
+    try {
+      const liveRates = await getExchangeRates();
+      const live = liveRates.find((r) => r.currency === currency);
+      if (live) {
+        const updated = applyLiveRate(report, live);
+        report = { ...report, ...updated } as AlertReport;
+      }
+    } catch { /* ignore */ }
   }
+
   return report;
 }
 

@@ -429,13 +429,12 @@ export function ExchangeAlertBanner() {
   const [bannerCurrencies, setBannerCurrencies] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  // phase: 'idle' = 정상 표시, 'exiting' = 현재 위로 퇴장 + 다음 아래서 진입
-  const [phase, setPhase] = useState<"idle" | "exiting">("idle");
+  const [visible, setVisible] = useState(true);
+  const transitioningRef = useRef(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [report, setReport] = useState<AlertReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const rotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const alertsRef = useRef(filteredAlerts);
   alertsRef.current = filteredAlerts;
 
@@ -540,43 +539,35 @@ export function ExchangeAlertBanner() {
     };
   }, [fetchAlerts]);
 
-  // 롤링 전환 트리거 (phase를 exiting으로 변경)
-  const triggerNext = useCallback(() => {
-    if (alertsRef.current.length <= 1) return;
-    setPhase("exiting");
+  // 전환 헬퍼 (페이드 아웃 → 인덱스 변경 → 페이드 인)
+  const doTransition = useCallback((getIndex: (prev: number, len: number) => number) => {
+    if (transitioningRef.current || alertsRef.current.length <= 1) return;
+    transitioningRef.current = true;
+    setVisible(false);
+    setTimeout(() => {
+      setCurrentIndex((prev) => getIndex(prev, alertsRef.current.length));
+      setVisible(true);
+      transitioningRef.current = false;
+    }, 250);
   }, []);
+
+  const triggerNext = useCallback(() => {
+    doTransition((prev, len) => (prev + 1) % len);
+  }, [doTransition]);
 
   const triggerPrev = useCallback(() => {
-    if (alertsRef.current.length <= 1) return;
-    setPhase("exiting");
-    // prev 방향 표시를 위해 인덱스를 미리 2칸 뒤로 (exiting 완료 시 +1 되므로)
-    setCurrentIndex((prev) => {
-      const len = alertsRef.current.length;
-      return (prev - 2 + len) % len;
-    });
-  }, []);
+    doTransition((prev, len) => (prev - 1 + len) % len);
+  }, [doTransition]);
 
-  const triggerGoTo = useCallback((targetIdx: number) => {
-    setPhase("exiting");
-    // 타겟 인덱스 - 1 설정 (exiting 완료 시 +1 되므로)
-    setCurrentIndex((targetIdx - 1 + alertsRef.current.length) % alertsRef.current.length);
-  }, []);
-
-  // slideInUp 애니메이션 완료 시 → 인덱스를 다음으로 변경하고 idle 복귀
-  const handleAnimationEnd = useCallback(() => {
-    setCurrentIndex((prev) => (prev + 1) % Math.max(alertsRef.current.length, 1));
-    setPhase("idle");
-  }, []);
+  const triggerGoTo = useCallback((idx: number) => {
+    doTransition(() => idx);
+  }, [doTransition]);
 
   // 자동 롤링 인터벌
   useEffect(() => {
     if (filteredAlerts.length <= 1) return;
-
-    rotateRef.current = setInterval(triggerNext, 5000);
-
-    return () => {
-      if (rotateRef.current) clearInterval(rotateRef.current);
-    };
+    const interval = setInterval(triggerNext, 5000);
+    return () => clearInterval(interval);
   }, [filteredAlerts.length, triggerNext]);
 
   const openReport = (currency: string) => {
@@ -607,29 +598,25 @@ export function ExchangeAlertBanner() {
   const current = filteredAlerts[safeIndex];
   if (!current) return null;
 
-  const nextIndex = (safeIndex + 1) % filteredAlerts.length;
-  const nextAlert = filteredAlerts[nextIndex];
   const style = TIER_STYLES[current.tier];
-  const nextStyle = nextAlert ? TIER_STYLES[nextAlert.tier] : style;
 
   return (
     <>
       <div
         className={cn(
-          "w-full border-b overflow-hidden transition-all duration-400",
-          phase === "exiting" ? nextStyle.bg : style.bg,
-          phase === "exiting" ? nextStyle.border : style.border,
-          style.pulse && phase === "idle" && "animate-[pulse_3s_ease-in-out_infinite]"
+          "w-full border-b overflow-hidden",
+          style.bg,
+          style.border,
+          style.pulse && "animate-[pulse_3s_ease-in-out_infinite]"
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="relative h-10 overflow-hidden">
-            {/* 현재 아이템 */}
+          <div className="h-10">
             <button
               onClick={() => openReport(current.currency)}
               className={cn(
-                "absolute inset-0 w-full group cursor-pointer",
-                phase === "exiting" && "animate-[slideOutUp_400ms_ease-in-out_forwards]"
+                "w-full group cursor-pointer transition-opacity duration-300",
+                visible ? "opacity-100" : "opacity-0"
               )}
             >
               <BannerItem
@@ -642,25 +629,6 @@ export function ExchangeAlertBanner() {
                 onSetIndex={triggerGoTo}
               />
             </button>
-
-            {/* 다음 아이템 (아래에서 올라오며 진입) */}
-            {phase === "exiting" && nextAlert && (
-              <button
-                onClick={() => openReport(nextAlert.currency)}
-                className="absolute inset-0 w-full group cursor-pointer animate-[slideInUp_400ms_ease-in-out_forwards]"
-                onAnimationEnd={handleAnimationEnd}
-              >
-                <BannerItem
-                  alert={nextAlert}
-                  alerts={filteredAlerts}
-                  currentIndex={nextIndex}
-                  onOpenReport={openReport}
-                  onPrev={triggerPrev}
-                  onNext={triggerNext}
-                  onSetIndex={triggerGoTo}
-                />
-              </button>
-            )}
           </div>
         </div>
       </div>
