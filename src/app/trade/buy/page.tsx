@@ -35,6 +35,8 @@ function BuyForm() {
 
   const [portfolioId, setPortfolioId] = useState(preselectedPortfolioId || "");
   const [amount, setAmount] = useState("");
+  const [krwInput, setKrwInput] = useState("");
+  const [inputMode, setInputMode] = useState<"currency" | "krw">("currency");
   const [customRate, setCustomRate] = useState("");
   const [useCustomRate, setUseCustomRate] = useState(false);
   const [fee, setFee] = useState("");
@@ -114,9 +116,19 @@ function BuyForm() {
     ? getInternalRate(currency, parseFloat(customRate) || 0)
     : currentRate;
 
-  const amountNum = parseFloat(amount) || 0;
   const feeNum = parseFloat(fee) || 0;
-  const krwAmount = amountNum * effectiveRate;
+
+  // 입력 모드에 따라 외화 금액 / 원화 금액 계산
+  let amountNum: number;
+  let krwAmount: number;
+  if (inputMode === "currency") {
+    amountNum = parseFloat(amount) || 0;
+    krwAmount = amountNum * effectiveRate;
+  } else {
+    const krwInputNum = parseFloat(krwInput) || 0;
+    krwAmount = krwInputNum;
+    amountNum = effectiveRate > 0 ? krwInputNum / effectiveRate : 0;
+  }
   const totalKrw = krwAmount + feeNum;
 
   const handleRefreshRate = () => {
@@ -274,19 +286,70 @@ function BuyForm() {
         {/* 금액 입력 */}
         <div>
           <label className="text-sm font-medium mb-2 block">매수 금액</label>
-          <div className="relative">
-            <Input
-              type="number"
-              placeholder="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="text-2xl h-14 pr-16"
-              step="0.01"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
-              {currency}
-            </span>
+          <div className="flex gap-1 p-1 bg-gray-100 rounded-lg mb-3">
+            <button
+              type="button"
+              onClick={() => { setInputMode("currency"); setKrwInput(""); }}
+              className={`flex-1 text-xs py-1.5 px-3 rounded-md transition-colors ${
+                inputMode === "currency"
+                  ? "bg-white shadow-sm font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {currency} 금액 입력
+            </button>
+            <button
+              type="button"
+              onClick={() => { setInputMode("krw"); setAmount(""); }}
+              className={`flex-1 text-xs py-1.5 px-3 rounded-md transition-colors ${
+                inputMode === "krw"
+                  ? "bg-white shadow-sm font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              원화 금액 입력
+            </button>
           </div>
+          {inputMode === "currency" ? (
+            <div className="relative">
+              <Input
+                type="number"
+                placeholder="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="text-2xl h-14 pr-16"
+                step="0.01"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+                {currency}
+              </span>
+            </div>
+          ) : (
+            <div className="relative">
+              <Input
+                type="number"
+                placeholder="0"
+                value={krwInput}
+                onChange={(e) => setKrwInput(e.target.value)}
+                className="text-2xl h-14 pr-12"
+                step="1"
+              />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground">
+                원
+              </span>
+            </div>
+          )}
+          {/* 역산된 값 표시 */}
+          {inputMode === "krw" && amountNum > 0 && effectiveRate > 0 && (
+            <p className="text-sm text-muted-foreground mt-2">
+              = <span className="font-medium tabular-nums">{amountNum.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span> {currency}
+            </p>
+          )}
+          {inputMode === "currency" && amountNum > 0 && effectiveRate > 0 && (
+            <p className="text-sm text-muted-foreground mt-2">
+              = <span className="font-medium tabular-nums">{formatKRW(krwAmount)}</span>
+            </p>
+          )}
         </div>
 
         {/* 환율 */}
