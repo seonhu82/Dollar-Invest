@@ -690,17 +690,6 @@ export function ExchangeAlertBanner() {
         </DialogContent>
       </Dialog>
 
-      {/* 롤링 애니메이션 keyframes */}
-      <style jsx global>{`
-        @keyframes slideOutUp {
-          from { transform: translateY(0); opacity: 1; }
-          to { transform: translateY(-100%); opacity: 0; }
-        }
-        @keyframes slideInUp {
-          from { transform: translateY(100%); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-      `}</style>
     </>
   );
 }
