@@ -431,9 +431,8 @@ export function ExchangeAlertBanner({ isIdle = false }: { isIdle?: boolean }) {
   const [bannerCurrencies, setBannerCurrencies] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [sliding, setSliding] = useState(false);
-  const [noTransition, setNoTransition] = useState(false);
-  const slidingRef = useRef(false);
+  const [phase, setPhase] = useState<"idle" | "exit" | "enter">("idle");
+  const animatingRef = useRef(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [report, setReport] = useState<AlertReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
@@ -548,37 +547,32 @@ export function ExchangeAlertBanner({ isIdle = false }: { isIdle?: boolean }) {
     };
   }, [fetchAlerts, isIdle, settingsLoaded]);
 
-  // 위로 슬라이드 전환 (자동 롤링 + 수동 다음)
-  const slideNext = useCallback(() => {
-    if (slidingRef.current || alertsRef.current.length <= 1) return;
-    slidingRef.current = true;
-    setSliding(true);
+  // 아래로 슬라이드 전환 (exit → index 변경 → enter)
+  const doSlide = useCallback((getIdx: (prev: number, len: number) => number) => {
+    if (animatingRef.current || alertsRef.current.length <= 1) return;
+    animatingRef.current = true;
+    setPhase("exit");
     setTimeout(() => {
-      setNoTransition(true);
-      setSliding(false);
-      setCurrentIndex((prev) => (prev + 1) % alertsRef.current.length);
-      requestAnimationFrame(() => {
-        setNoTransition(false);
-        slidingRef.current = false;
-      });
-    }, 350);
+      setCurrentIndex((prev) => getIdx(prev, alertsRef.current.length));
+      setPhase("enter");
+      setTimeout(() => {
+        setPhase("idle");
+        animatingRef.current = false;
+      }, 300);
+    }, 300);
   }, []);
 
-  // 즉시 점프 (이전, 인디케이터 클릭)
-  const jumpTo = useCallback((getIdx: (prev: number, len: number) => number) => {
-    if (slidingRef.current || alertsRef.current.length <= 1) return;
-    setNoTransition(true);
-    setCurrentIndex((prev) => getIdx(prev, alertsRef.current.length));
-    requestAnimationFrame(() => setNoTransition(false));
-  }, []);
+  const slideNext = useCallback(() => {
+    doSlide((prev, len) => (prev + 1) % len);
+  }, [doSlide]);
 
   const triggerPrev = useCallback(() => {
-    jumpTo((prev, len) => (prev - 1 + len) % len);
-  }, [jumpTo]);
+    doSlide((prev, len) => (prev - 1 + len) % len);
+  }, [doSlide]);
 
   const triggerGoTo = useCallback((idx: number) => {
-    jumpTo(() => idx);
-  }, [jumpTo]);
+    doSlide(() => idx);
+  }, [doSlide]);
 
   // 자동 롤링 인터벌
   useEffect(() => {
@@ -614,9 +608,6 @@ export function ExchangeAlertBanner({ isIdle = false }: { isIdle?: boolean }) {
   const safeIndex = currentIndex % filteredAlerts.length;
   const current = filteredAlerts[safeIndex];
   if (!current) return null;
-
-  const nextIndex = (safeIndex + 1) % filteredAlerts.length;
-  const next = filteredAlerts.length > 1 ? filteredAlerts[nextIndex] : null;
 
   const style = TIER_STYLES[current.tier];
 
@@ -654,13 +645,12 @@ export function ExchangeAlertBanner({ isIdle = false }: { isIdle?: boolean }) {
         >
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="relative h-10 overflow-hidden">
-              {/* 현재 아이템 */}
               <button
                 onClick={() => openReport(current.currency)}
                 className={cn(
                   "absolute inset-0 w-full group cursor-pointer",
-                  !noTransition && "transition-transform duration-300 ease-in-out",
-                  sliding ? "-translate-y-full" : "translate-y-0"
+                  phase === "exit" && "animate-[bannerExit_300ms_ease-in_forwards]",
+                  phase === "enter" && "animate-[bannerEnter_300ms_ease-out]",
                 )}
               >
                 <BannerItem
@@ -673,27 +663,6 @@ export function ExchangeAlertBanner({ isIdle = false }: { isIdle?: boolean }) {
                   onSetIndex={triggerGoTo}
                 />
               </button>
-              {/* 다음 아이템 (슬라이드 인) */}
-              {next && (
-                <button
-                  onClick={() => openReport(next.currency)}
-                  className={cn(
-                    "absolute inset-0 w-full group cursor-pointer",
-                    !noTransition && "transition-transform duration-300 ease-in-out",
-                    sliding ? "translate-y-0" : "translate-y-full"
-                  )}
-                >
-                  <BannerItem
-                    alert={next}
-                    alerts={filteredAlerts}
-                    currentIndex={nextIndex}
-                    onOpenReport={openReport}
-                    onPrev={triggerPrev}
-                    onNext={slideNext}
-                    onSetIndex={triggerGoTo}
-                  />
-                </button>
-              )}
             </div>
           </div>
         </div>

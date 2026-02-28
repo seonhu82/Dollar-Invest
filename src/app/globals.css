@@ -129,13 +129,13 @@ body {
   display: none;
 }
 
-/* 배너 롤링 애니메이션 */
-@keyframes slideOutUp {
+/* 배너 롤링 애니메이션 (아래로 슬라이드) */
+@keyframes bannerExit {
   from { transform: translateY(0); opacity: 1; }
-  to { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(100%); opacity: 0; }
 }
 
-@keyframes slideInUp {
-  from { transform: translateY(100%); opacity: 0; }
+@keyframes bannerEnter {
+  from { transform: translateY(-100%); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
