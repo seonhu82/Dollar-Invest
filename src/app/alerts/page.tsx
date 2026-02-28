@@ -19,6 +19,7 @@ import {
   Loader2,
   CheckCircle,
   RefreshCw,
+  BellPlus,
 } from "lucide-react";
 
 interface Alert {
@@ -60,20 +61,56 @@ export default function AlertsPage() {
   const [newDailyTime, setNewDailyTime] = useState("09:00");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">("default");
+  const [checking, setChecking] = useState(false);
+
+  // 브라우저 알림 권한 상태 확인
+  useEffect(() => {
+    if ("Notification" in window) {
+      setNotifPermission(Notification.permission);
+    } else {
+      setNotifPermission("unsupported");
+    }
+  }, []);
+
+  // 브라우저 알림 권한 요청
+  const requestNotifPermission = async () => {
+    if ("Notification" in window) {
+      const permission = await Notification.requestPermission();
+      setNotifPermission(permission);
+    }
+  };
+
+  // 알림 조건 수동 체크
+  const handleManualCheck = async () => {
+    setChecking(true);
+    try {
+      const res = await fetch("/api/cron/check-alerts");
+      const data = await res.json();
+
+      if (data.triggered > 0) {
+        // 브라우저 알림
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("달러인베스트 알림", {
+            body: `${data.triggered}건의 새로운 환율 알림이 발생했습니다.`,
+            icon: "/favicon.ico",
+            tag: "dollar-invest-alert",
+          });
+        }
+      }
+
+      await fetchAlerts();
+      await fetchLogs();
+    } catch {
+      // 무시
+    } finally {
+      setChecking(false);
+    }
+  };
 
   // 페이지 로드 시 알림 조건 체크 트리거 + 데이터 로드
   useEffect(() => {
-    // 알림 조건 체크 (백그라운드)
-    fetch("/api/cron/check-alerts")
-      .then(() => {
-        // 체크 완료 후 데이터 새로고침
-        fetchAlerts();
-        fetchLogs();
-      })
-      .catch(() => {
-        fetchAlerts();
-        fetchLogs();
-      });
+    handleManualCheck();
   }, []);
 
   const fetchAlerts = async () => {
@@ -191,11 +228,39 @@ export default function AlertsPage() {
             <h1 className="text-2xl font-bold">알림</h1>
             <p className="text-muted-foreground">환율 알림을 설정하고 관리하세요</p>
           </div>
-          <Button onClick={() => setShowCreateForm(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            알림 추가
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleManualCheck} disabled={checking}>
+              <RefreshCw className={`h-4 w-4 mr-1 ${checking ? "animate-spin" : ""}`} />
+              체크
+            </Button>
+            <Button onClick={() => setShowCreateForm(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              알림 추가
+            </Button>
+          </div>
         </div>
+
+        {/* 브라우저 알림 권한 요청 */}
+        {notifPermission === "default" && (
+          <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-3">
+              <BellPlus className="h-5 w-5 text-blue-600 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-900">브라우저 알림 활성화</p>
+                <p className="text-xs text-blue-700">환율 조건 충족 시 브라우저 알림을 받으려면 권한을 허용해주세요</p>
+              </div>
+            </div>
+            <Button size="sm" onClick={requestNotifPermission}>
+              허용하기
+            </Button>
+          </div>
+        )}
+        {notifPermission === "denied" && (
+          <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            <Bell className="h-4 w-4 shrink-0" />
+            브라우저 알림이 차단되어 있습니다. 브라우저 설정에서 알림을 허용해주세요.
+          </div>
+        )}
 
         {/* 알림 생성 폼 */}
         {showCreateForm && (

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,8 @@ export function Header() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // 사용자 역할 확인
   useEffect(() => {
@@ -46,6 +48,67 @@ export function Header() {
         .catch(() => {});
     }
   }, [session?.user?.id]);
+
+  // 읽지 않은 알림 수 조회
+  const fetchUnreadCount = useCallback(async () => {
+    if (!session?.user?.id) return;
+    try {
+      const res = await fetch("/api/alerts/logs?unread=true&limit=1");
+      const data = await res.json();
+      setUnreadCount(data.unreadCount || 0);
+    } catch {
+      // 무시
+    }
+  }, [session?.user?.id]);
+
+  // 알림 조건 체크 + 브라우저 알림
+  const checkAndNotify = useCallback(async () => {
+    if (!session?.user?.id) return;
+    try {
+      const res = await fetch("/api/cron/check-alerts");
+      const data = await res.json();
+
+      if (data.triggered > 0) {
+        // 읽지 않은 알림 수 새로고침
+        fetchUnreadCount();
+
+        // 브라우저 알림 표시
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("달러인베스트 알림", {
+            body: `${data.triggered}건의 새로운 환율 알림이 발생했습니다.`,
+            icon: "/favicon.ico",
+            tag: "dollar-invest-alert",
+          });
+        }
+      }
+    } catch {
+      // 무시
+    }
+  }, [session?.user?.id, fetchUnreadCount]);
+
+  // 초기 로드 + 주기적 체크
+  useEffect(() => {
+    if (!session?.user?.id) return;
+
+    fetchUnreadCount();
+    checkAndNotify();
+
+    // 5분마다 알림 체크
+    checkIntervalRef.current = setInterval(() => {
+      checkAndNotify();
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+    };
+  }, [session?.user?.id, fetchUnreadCount, checkAndNotify]);
+
+  // 알림 페이지 진입 시 unread 새로고침
+  useEffect(() => {
+    if (pathname === "/alerts") {
+      fetchUnreadCount();
+    }
+  }, [pathname, fetchUnreadCount]);
 
   const isAdmin = userRole === "ADMIN" || userRole === "SUPER_ADMIN";
 
@@ -68,12 +131,13 @@ export function Header() {
           <nav className="flex items-center space-x-0.5 sm:space-x-1 text-sm overflow-x-auto scrollbar-hide">
             {navigation.map((item) => {
               const isActive = pathname === item.href;
+              const isAlertNav = item.href === "/alerts";
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex items-center space-x-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
+                    "relative flex items-center space-x-1.5 px-2 sm:px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap flex-shrink-0",
                     isActive
                       ? "bg-white text-gray-900 font-medium shadow-sm"
                       : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
@@ -81,6 +145,12 @@ export function Header() {
                 >
                   <item.icon className="h-4 w-4" />
                   <span className="hidden lg:inline-block">{item.name}</span>
+                  {/* 알림 배지 */}
+                  {isAlertNav && unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full leading-none animate-pulse">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
                 </Link>
               );
             })}
