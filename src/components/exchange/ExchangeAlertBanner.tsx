@@ -429,13 +429,15 @@ export function ExchangeAlertBanner() {
   const [bannerCurrencies, setBannerCurrencies] = useState<string[]>([]);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const [displayIndex, setDisplayIndex] = useState(0);
+  // phase: 'idle' = 정상 표시, 'exiting' = 현재 위로 퇴장 + 다음 아래서 진입
+  const [phase, setPhase] = useState<"idle" | "exiting">("idle");
   const [reportOpen, setReportOpen] = useState(false);
   const [report, setReport] = useState<AlertReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rotateRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const alertsRef = useRef(filteredAlerts);
+  alertsRef.current = filteredAlerts;
 
   // 배너 설정 로드
   useEffect(() => {
@@ -494,9 +496,16 @@ export function ExchangeAlertBanner() {
         .filter((a): a is AlertStatus => a != null);
       setFilteredAlerts(filtered);
     }
-    setCurrentIndex(0);
-    setDisplayIndex(0);
   }, [allAlerts, bannerCurrencies]);
+
+  // filteredAlerts가 처음 로드되면 랜덤 시작 인덱스 설정
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (filteredAlerts.length > 1 && !initializedRef.current) {
+      initializedRef.current = true;
+      setCurrentIndex(Math.floor(Math.random() * filteredAlerts.length));
+    }
+  }, [filteredAlerts.length]);
 
   useEffect(() => {
     fetchAlerts();
@@ -531,53 +540,44 @@ export function ExchangeAlertBanner() {
     };
   }, [fetchAlerts]);
 
-  // 위로 롤링 자동 전환
+  // 롤링 전환 트리거 (phase를 exiting으로 변경)
+  const triggerNext = useCallback(() => {
+    if (alertsRef.current.length <= 1) return;
+    setPhase("exiting");
+  }, []);
+
+  const triggerPrev = useCallback(() => {
+    if (alertsRef.current.length <= 1) return;
+    setPhase("exiting");
+    // prev 방향 표시를 위해 인덱스를 미리 2칸 뒤로 (exiting 완료 시 +1 되므로)
+    setCurrentIndex((prev) => {
+      const len = alertsRef.current.length;
+      return (prev - 2 + len) % len;
+    });
+  }, []);
+
+  const triggerGoTo = useCallback((targetIdx: number) => {
+    setPhase("exiting");
+    // 타겟 인덱스 - 1 설정 (exiting 완료 시 +1 되므로)
+    setCurrentIndex((targetIdx - 1 + alertsRef.current.length) % alertsRef.current.length);
+  }, []);
+
+  // slideInUp 애니메이션 완료 시 → 인덱스를 다음으로 변경하고 idle 복귀
+  const handleAnimationEnd = useCallback(() => {
+    setCurrentIndex((prev) => (prev + 1) % Math.max(alertsRef.current.length, 1));
+    setPhase("idle");
+  }, []);
+
+  // 자동 롤링 인터벌
   useEffect(() => {
     if (filteredAlerts.length <= 1) return;
 
-    rotateRef.current = setInterval(() => {
-      goToNext();
-    }, 6000);
+    rotateRef.current = setInterval(triggerNext, 5000);
 
     return () => {
       if (rotateRef.current) clearInterval(rotateRef.current);
     };
-  }, [filteredAlerts.length]);
-
-  const goToNext = useCallback(() => {
-    setIsTransitioning(true);
-    // 애니메이션 시작 후 300ms 뒤에 실제 인덱스 변경
-    setTimeout(() => {
-      setCurrentIndex((prev) => {
-        const next = (prev + 1) % Math.max(filteredAlerts.length, 1);
-        setDisplayIndex(next);
-        return next;
-      });
-      setIsTransitioning(false);
-    }, 300);
-  }, [filteredAlerts.length]);
-
-  const goToPrev = useCallback(() => {
-    setIsTransitioning(true);
-    setTimeout(() => {
-      setCurrentIndex((prev) => {
-        const next = (prev - 1 + filteredAlerts.length) % Math.max(filteredAlerts.length, 1);
-        setDisplayIndex(next);
-        return next;
-      });
-      setIsTransitioning(false);
-    }, 300);
-  }, [filteredAlerts.length]);
-
-  const goToIndex = useCallback((i: number) => {
-    if (i === currentIndex) return;
-    setIsTransitioning(true);
-    setTimeout(() => {
-      setCurrentIndex(i);
-      setDisplayIndex(i);
-      setIsTransitioning(false);
-    }, 300);
-  }, [currentIndex]);
+  }, [filteredAlerts.length, triggerNext]);
 
   const openReport = (currency: string) => {
     setReportOpen(true);
@@ -603,62 +603,61 @@ export function ExchangeAlertBanner() {
 
   if (filteredAlerts.length === 0) return null;
 
-  const current = filteredAlerts[displayIndex % filteredAlerts.length];
+  const safeIndex = currentIndex % filteredAlerts.length;
+  const current = filteredAlerts[safeIndex];
   if (!current) return null;
 
-  const style = TIER_STYLES[current.tier];
-
-  // 다음 아이템 (롤링 애니메이션용)
-  const nextIndex = (displayIndex + 1) % filteredAlerts.length;
+  const nextIndex = (safeIndex + 1) % filteredAlerts.length;
   const nextAlert = filteredAlerts[nextIndex];
+  const style = TIER_STYLES[current.tier];
   const nextStyle = nextAlert ? TIER_STYLES[nextAlert.tier] : style;
 
   return (
     <>
       <div
         className={cn(
-          "w-full border-b overflow-hidden",
-          // 트랜지션 중이면 다음 배경으로
-          isTransitioning ? nextStyle.bg : style.bg,
-          isTransitioning ? nextStyle.border : style.border,
-          style.pulse && !isTransitioning && "animate-[pulse_3s_ease-in-out_infinite]",
-          "transition-all duration-300"
+          "w-full border-b overflow-hidden transition-all duration-400",
+          phase === "exiting" ? nextStyle.bg : style.bg,
+          phase === "exiting" ? nextStyle.border : style.border,
+          style.pulse && phase === "idle" && "animate-[pulse_3s_ease-in-out_infinite]"
         )}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="relative h-10 overflow-hidden">
+            {/* 현재 아이템 */}
             <button
               onClick={() => openReport(current.currency)}
               className={cn(
                 "absolute inset-0 w-full group cursor-pointer",
-                "transition-transform duration-300 ease-in-out",
-                isTransitioning ? "-translate-y-full opacity-0" : "translate-y-0 opacity-100"
+                phase === "exiting" && "animate-[slideOutUp_400ms_ease-in-out_forwards]"
               )}
             >
               <BannerItem
                 alert={current}
                 alerts={filteredAlerts}
-                currentIndex={displayIndex}
+                currentIndex={safeIndex}
                 onOpenReport={openReport}
-                onPrev={goToPrev}
-                onNext={goToNext}
-                onSetIndex={goToIndex}
+                onPrev={triggerPrev}
+                onNext={triggerNext}
+                onSetIndex={triggerGoTo}
               />
             </button>
-            {/* 다음 아이템 (아래에서 올라오는 애니메이션) */}
-            {isTransitioning && nextAlert && (
+
+            {/* 다음 아이템 (아래에서 올라오며 진입) */}
+            {phase === "exiting" && nextAlert && (
               <button
                 onClick={() => openReport(nextAlert.currency)}
-                className="absolute inset-0 w-full group cursor-pointer animate-[slideUp_300ms_ease-in-out_forwards]"
+                className="absolute inset-0 w-full group cursor-pointer animate-[slideInUp_400ms_ease-in-out_forwards]"
+                onAnimationEnd={handleAnimationEnd}
               >
                 <BannerItem
                   alert={nextAlert}
                   alerts={filteredAlerts}
                   currentIndex={nextIndex}
                   onOpenReport={openReport}
-                  onPrev={goToPrev}
-                  onNext={goToNext}
-                  onSetIndex={goToIndex}
+                  onPrev={triggerPrev}
+                  onNext={triggerNext}
+                  onSetIndex={triggerGoTo}
                 />
               </button>
             )}
@@ -693,15 +692,13 @@ export function ExchangeAlertBanner() {
 
       {/* 롤링 애니메이션 keyframes */}
       <style jsx global>{`
-        @keyframes slideUp {
-          from {
-            transform: translateY(100%);
-            opacity: 0;
-          }
-          to {
-            transform: translateY(0);
-            opacity: 1;
-          }
+        @keyframes slideOutUp {
+          from { transform: translateY(0); opacity: 1; }
+          to { transform: translateY(-100%); opacity: 0; }
+        }
+        @keyframes slideInUp {
+          from { transform: translateY(100%); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
     </>

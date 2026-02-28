@@ -61,9 +61,19 @@ export default function AlertsPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
+  // 페이지 로드 시 알림 조건 체크 트리거 + 데이터 로드
   useEffect(() => {
-    fetchAlerts();
-    fetchLogs();
+    // 알림 조건 체크 (백그라운드)
+    fetch("/api/cron/check-alerts")
+      .then(() => {
+        // 체크 완료 후 데이터 새로고침
+        fetchAlerts();
+        fetchLogs();
+      })
+      .catch(() => {
+        fetchAlerts();
+        fetchLogs();
+      });
   }, []);
 
   const fetchAlerts = async () => {
